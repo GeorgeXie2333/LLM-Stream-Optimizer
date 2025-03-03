@@ -42,7 +42,9 @@ Based on ☁️Cloudflare Workers!!!
 - Web管理页面登录密码为变量`PROXY_API_KEY`
 
 ~~**剔除 Cloudflare 自带 fetch 的多余请求头**~~
+
 ~~使用ShadowFetch替代Cloudflare Fetch~~
+
 （技术不允许我实现，求佬提PR😭）
 
 **支持`/v1/models`路径获取模型列表**
