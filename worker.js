@@ -1424,7 +1424,14 @@ async function handleRequest(request, config) {
     if (apiType === 'anthropic' && config.anthropicEnabled) {
       upstreamRequest = await createAnthropicRequest(request, requestBody, config);
     } else if (apiType === 'gemini' && config.geminiEnabled) {
-      upstreamRequest = await createGeminiRequest(request, requestBody, config);
+      try {
+        upstreamRequest = await createGeminiRequest(request, requestBody, config);
+        console.log("Gemini请求URL:", upstreamRequest.url);
+        console.log("Gemini请求体:", await upstreamRequest.clone().text());
+      } catch (error) {
+        console.error("创建Gemini请求时出错:", error);
+        throw error;
+      }
     } else {
       // 默认使用OpenAI API
       const upstreamUrl = extractUpstreamUrl(request, config);
@@ -1874,44 +1881,80 @@ function createUpstreamRequest(url, originalRequest, requestBody, apiKey) {
 // 创建Gemini API请求
 async function createGeminiRequest(originalRequest, requestBody, config) {
   const apiKey = getGeminiApiKey(originalRequest, config);
-  const geminiBody = convertToGeminiFormat(requestBody);
-  const headers = new Headers();
-  
-  headers.set("Content-Type", "application/json");
-  
-  // 使用正确的端点URL格式和路径
-  let modelName = geminiBody.model;
-  if (!modelName.includes("/")) {
-    modelName = `models/${modelName}`;  // 确保模型名称格式正确
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    "x-goog-api-client": "genai-js/0.21.0",
+    "x-goog-api-key": apiKey
+  });
+
+  let modelName = requestBody.model || "gemini-1.5-pro-latest";
+  if (!modelName.startsWith("models/")) {
+    modelName = `models/${modelName}`;
   }
-  
-  // 确保使用正确的URL格式和API版本
+
   let geminiUrl = config.geminiUpstreamUrl;
-  // 移除URL末尾的斜杠(如果有)
   if (geminiUrl.endsWith('/')) {
     geminiUrl = geminiUrl.slice(0, -1);
   }
-  
-  let url;
-  if (requestBody.stream) {
-    // 流式请求使用streamGenerateContent端点
-    url = `${geminiUrl}/v1beta/${modelName}:streamGenerateContent?key=${apiKey}`;
-    geminiBody.stream = true;
-  } else {
-    // 非流式请求使用generateContent端点
-    url = `${geminiUrl}/v1beta/${modelName}:generateContent?key=${apiKey}`;
+
+  const isStreamRequest = requestBody.stream === true;
+  const TASK = isStreamRequest ? "streamGenerateContent" : "generateContent";
+  let url = `${geminiUrl}/v1beta/${modelName}:${TASK}`;
+  if (isStreamRequest) {
+    url += "?alt=sse";
   }
+
+  // 转换消息格式
+  const contents = [];
+  let system_instruction;
   
-  console.log(`Using Gemini URL: ${url}`); // 调试日志
-  
-  const requestInit = {
+  for (const msg of requestBody.messages) {
+    if (msg.role === "system") {
+      system_instruction = {
+        parts: [{ text: msg.content }]
+      };
+    } else {
+      contents.push({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: [{ text: msg.content }]
+      });
+    }
+  }
+
+  // 如果有system instruction但没有其他内容
+  if (system_instruction && contents.length === 0) {
+    contents.push({ role: "model", parts: [{ text: " " }] });
+  }
+
+  const geminiBody = {
+    contents,
+    system_instruction,
+    safetySettings: [
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
+    ],
+    generationConfig: {
+      stopSequences: requestBody.stop,
+      candidateCount: requestBody.n,
+      maxOutputTokens: requestBody.max_tokens || requestBody.max_completion_tokens,
+      temperature: requestBody.temperature,
+      topP: requestBody.top_p,
+      topK: requestBody.top_k,
+      frequencyPenalty: requestBody.frequency_penalty,
+      presencePenalty: requestBody.presence_penalty
+    }
+  };
+
+  console.log("Gemini请求URL:", url);
+  console.log("Gemini请求体:", JSON.stringify(geminiBody, null, 2));
+
+  return new Request(url, {
     method: "POST",
     headers: headers,
-    body: JSON.stringify(geminiBody),
-    redirect: "follow",
-  };
-  
-  return new Request(url, requestInit);
+    body: JSON.stringify(geminiBody)
+  });
 }
 
 // 创建Anthropic API请求
@@ -1941,68 +1984,49 @@ async function createAnthropicRequest(originalRequest, requestBody, config) {
 
 // OpenAI格式转换为Gemini格式
 function convertToGeminiFormat(openAiBody) {
-  // 简化Gemini请求体结构
   const geminiBody = {
-    temperature: openAiBody.temperature !== undefined ? openAiBody.temperature : 0.7,
-    topP: openAiBody.top_p !== undefined ? openAiBody.top_p : 0.95,
-    topK: openAiBody.top_k !== undefined ? openAiBody.top_k : 40,
-    maxOutputTokens: openAiBody.max_tokens !== undefined ? openAiBody.max_tokens : 2048,
-    contents: []
+    contents: [],
+    generationConfig: {}
   };
   
-  // 处理模型名称映射
+  // 设置生成参数
+  if (openAiBody.temperature !== undefined) {
+    geminiBody.generationConfig.temperature = openAiBody.temperature;
+  }
+  if (openAiBody.max_tokens !== undefined) {
+    geminiBody.generationConfig.maxOutputTokens = openAiBody.max_tokens;
+  }
+  if (openAiBody.top_p !== undefined) {
+    geminiBody.generationConfig.topP = openAiBody.top_p;
+  }
+  
+  // 处理模型名称
   const modelMap = {
     "gpt-3.5-turbo": "gemini-pro",
     "gpt-4": "gemini-1.5-pro",
     "gpt-4-turbo": "gemini-1.5-pro",
   };
   
-  // 如果有提供的模型名称以gemini开头,直接使用它
   geminiBody.model = openAiBody.model && openAiBody.model.toString().startsWith("gemini") 
     ? openAiBody.model 
     : (modelMap[openAiBody.model] || "gemini-pro");
   
-  // 处理系统消息
-  let systemInstruction = "";
-  
-  // 转换消息格式
+  // 处理消息
   if (openAiBody.messages && Array.isArray(openAiBody.messages)) {
-    // 处理系统消息
-    const systemMessages = openAiBody.messages.filter(msg => msg.role === "system");
-    if (systemMessages.length > 0) {
-      systemInstruction = systemMessages.map(msg => msg.content).join("\n");
+    // 直接将所有消息合并为一个用户消息
+    const allMessages = openAiBody.messages.map(msg => msg.content).join("\n");
+    
+    // 确保消息不为空
+    if (allMessages.trim()) {
+      geminiBody.contents.push({
+        role: "user",
+        parts: [{ text: allMessages }]
+      });
     }
-    
-    // 处理用户和助手消息
-    const nonSystemMessages = openAiBody.messages.filter(msg => msg.role !== "system");
-    let currentMessages = [];
-    
-    for (let i = 0; i < nonSystemMessages.length; i++) {
-      const msg = nonSystemMessages[i];
-      
-      if (msg.role === "user") {
-        // 正确处理用户消息
-        currentMessages.push({
-          role: "user",
-          parts: [{ text: msg.content }]
-        });
-      } else if (msg.role === "assistant") {
-        // 正确处理助手消息
-        currentMessages.push({
-          role: "model",
-          parts: [{ text: msg.content }]
-        });
-      }
-    }
-    
-    // 将所有消息添加到contents数组
-    geminiBody.contents = currentMessages;
   }
   
-  // 如果有系统指令,添加到geminiBody
-  if (systemInstruction) {
-    geminiBody.systemInstruction = { text: systemInstruction };
-  }
+  // 调试日志
+  console.log("转换后的Gemini请求体:", JSON.stringify(geminiBody, null, 2));
   
   return geminiBody;
 }
@@ -2403,88 +2427,85 @@ async function processGeminiSSELine(line, writer, encoder, delay, config) {
     await writer.write(encoder.encode("\n"));
     return;
   }
-  
-  // 调试日志
-  if (line.startsWith("data: ")) {
-    console.log(`Processing Gemini SSE line: ${line.substring(0, 50)}...`);
-  }
-  
-  // Gemini SSE格式处理
+
   if (line.startsWith("data: ")) {
     const data = line.slice(6);
-    
+    console.log("Gemini原始数据:", data);
+
     if (data === "[DONE]") {
       await writer.write(encoder.encode("data: [DONE]\n\n"));
       return;
     }
-    
+
     try {
       const geminiData = JSON.parse(data);
-      
-      // 处理Gemini流式响应中可能的不同结构
-      let textContent = "";
-      
-      // 获取文本内容 - 处理多种可能的结构
+      console.log("解析后的Gemini数据:", JSON.stringify(geminiData, null, 2));
+
       if (geminiData.candidates && geminiData.candidates.length > 0) {
         const candidate = geminiData.candidates[0];
-        
-        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-          textContent = candidate.content.parts[0].text || "";
-        } else if (candidate.text) {
-          textContent = candidate.text;
-        } else if (candidate.delta && candidate.delta.text) {
-          textContent = candidate.delta.text;
+        const index = candidate.index || 0;
+
+        // 提取文本内容
+        let textContent = "";
+        if (candidate.content?.parts) {
+          textContent = candidate.content.parts
+            .filter(part => part.text)
+            .map(part => part.text)
+            .join("");
         }
-      } else if (geminiData.text) {
-        textContent = geminiData.text;
-      } else if (geminiData.delta && geminiData.delta.text) {
-        textContent = geminiData.delta.text;
+
+        if (textContent) {
+          // 创建OpenAI格式的响应对象
+          const openAIFormat = {
+            id: `chatcmpl-${Date.now()}`,
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: "gemini-pro",
+            choices: [{
+              index,
+              delta: {
+                content: textContent
+              },
+              finish_reason: null
+            }]
+          };
+
+          // 使用sendContentCharByChar函数处理流式输出
+          await sendContentCharByChar(textContent, openAIFormat, writer, encoder, delay, false);
+        }
+
+        // 如果有完成原因，发送最终块
+        if (candidate.finishReason) {
+          const reasonsMap = {
+            "STOP": "stop",
+            "MAX_TOKENS": "length",
+            "SAFETY": "content_filter",
+            "RECITATION": "content_filter"
+          };
+
+          const finalChunk = {
+            id: `chatcmpl-${Date.now()}`,
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: "gemini-pro",
+            choices: [{
+              index,
+              delta: {},
+              finish_reason: reasonsMap[candidate.finishReason] || candidate.finishReason
+            }]
+          };
+
+          await writer.write(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
+          await writer.write(encoder.encode("data: [DONE]\n\n"));
+        }
       }
-      
-      if (textContent) {
-        // 转换为OpenAI格式
-        const openAIFormat = {
-          id: `gemini-${Date.now()}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model: "gemini",
-          choices: [{
-            index: 0,
-            delta: {
-              content: textContent
-            },
-            finish_reason: null
-          }]
-        };
-        
-        // 逐字符发送
-        await sendContentCharByChar(textContent, openAIFormat, writer, encoder, delay, false);
-      } else if (geminiData.promptFeedback || geminiData.usageMetadata) {
-        // 处理Gemini的结束消息
-        await writer.write(encoder.encode("data: [DONE]\n\n"));
-      } else {
-        // 其他情况,发送空delta表示结束
-        const openAIFormat = {
-          id: `gemini-${Date.now()}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(Date.now() / 1000),
-          model: "gemini",
-          choices: [{
-            index: 0,
-            delta: {},
-            finish_reason: "stop"
-          }]
-        };
-        
-        await writer.write(encoder.encode(`data: ${JSON.stringify(openAIFormat)}\n\n`));
-      }
+
     } catch (e) {
-      console.error("Error parsing Gemini SSE:", e);
-      // 发送原始数据
+      console.error("解析Gemini SSE出错:", e, "原始数据:", data);
       await writer.write(encoder.encode(`data: ${data}\n\n`));
     }
   } else {
-    // 非data行
+    console.log("非data行:", line);
     await writer.write(encoder.encode(`${line}\n`));
   }
 }
