@@ -1,4 +1,4 @@
-# LLM Stream Optimizer
+# ⚡LLM Stream Optimizer
 
 Based on ☁️Cloudflare Workers!!!
 
