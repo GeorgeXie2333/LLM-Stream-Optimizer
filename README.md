@@ -58,3 +58,5 @@ Based on ☁️Cloudflare Workers!!!
 > Todo List:
 > 
 > 支持同类型多API端点接入
+> 
+> 支持自定义API端点
