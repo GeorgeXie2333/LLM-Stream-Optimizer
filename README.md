@@ -18,6 +18,7 @@ Based on ☁️Cloudflare Workers!!!
 
 变量：
 `PROXY_API_KEY`=代理APIKEY，同时也是Web管理页的登录密码
+
 `CONFIG_KV`=KV数据库，用于存储API数据及流式优化配置
 
 
