@@ -12,7 +12,7 @@ KV：创建新的KV，绑定名为`CONFIG_KV`
 功能：
 
 **API多合一**
-- 支持添加OpenAI、Anthropic、Claude格式的API
+- 支持添加OpenAI、Anthropic、Google Gemini格式的API
 
 **智能流式输出优化**
 - 将大型响应块分解为逐字符输出
