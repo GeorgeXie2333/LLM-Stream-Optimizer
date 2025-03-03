@@ -1,4 +1,4 @@
-# LLM-Stream-Oprimizer
+# LLM-Stream-Optimizer
 变量：
 `PROXY_API_KEY`=代理APIKEY，同时也是Web管理页的登录密码（可设置多个，以英文逗号分隔）
 
