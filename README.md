@@ -11,6 +11,9 @@ KV：创建新的KV，绑定名为`CONFIG_KV`
 
 功能：
 
+**API多合一**
+- 支持添加OpenAI、Anthropic、Claude格式的API
+
 **智能流式输出优化**
 - 将大型响应块分解为逐字符输出
 - 基于响应块大小和时间间隔智能调整字符间延迟
@@ -35,3 +38,4 @@ KV：创建新的KV，绑定名为`CONFIG_KV`
 
 > Todo List:
 > 支持同类型多API端点接入
+> 集成ShadowFetch
