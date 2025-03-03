@@ -28,6 +28,10 @@ KV：创建新的KV，绑定名为`CONFIG_KV`
 - 访问workers域名根目录即为Web管理页面
 - Web管理页面登录密码为变量`PROXY_API_KEY`
 
+**剔除 Cloudflare 自带 fetch 的多余请求头**
+- 使用ShadowFetch替代Cloudflare Fetch
+- 直接使用 cloudflare:sockets 建立原生TCP 连接，实现真正的“隐身访问”
+
 **支持`/v1/models`路径获取模型列表**
 
 **使用模型时一定要设置`max_tokens`，否则可能产生奇怪的截断情况！！！**
@@ -39,5 +43,3 @@ KV：创建新的KV，绑定名为`CONFIG_KV`
 > Todo List:
 > 
 > 支持同类型多API端点接入
-> 
-> 集成ShadowFetch
