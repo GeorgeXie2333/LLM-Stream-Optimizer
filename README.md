@@ -1,8 +1,8 @@
 # LLM-Stream-Oprimizer
-> 变量：
-> `PROXY_API_KEY`=代理APIKEY，同时也是Web管理页的登录密码（可设置多个，以英文逗号分隔）
+变量：
+`PROXY_API_KEY`=代理APIKEY，同时也是Web管理页的登录密码（可设置多个，以英文逗号分隔）
 
-> KV：创建新的KV，绑定名为`CONFIG_KV`
+KV：创建新的KV，绑定名为`CONFIG_KV`
 
 
 
