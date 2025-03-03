@@ -408,86 +408,238 @@ function serveLoginPage() {
   const html = `
   <!DOCTYPE html>
   <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>多功能API代理 - 管理登录</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-      body {
-        background-color: #f8f9fa;
-        font-family: 'Microsoft YaHei', sans-serif;
-      }
-      .login-container {
-        max-width: 400px;
-        margin: 100px auto;
-        padding: 20px;
-        background-color: #fff;
-        border-radius: 5px;
-        box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      }
-      .login-title {
-        text-align: center;
-        margin-bottom: 30px;
-        color: #333;
-      }
-      .login-btn {
-        width: 100%;
-      }
-      .alert {
-        display: none;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>多功能API代理 - 管理登录</title>
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+      <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          --primary-color: #4361ee;
+          --primary-hover: #3a56d4;
+          --secondary-color: #7209b7;
+          --accent-color: #4cc9f0;
+          --light-bg: #f8f9fa;
+          --dark-text: #2b2d42;
+          --light-text: #8d99ae;
+          --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+          --transition: all 0.3s ease;
+        }
+        
+        body {
+          background: linear-gradient(135deg, #f5f7fa 0%, #e5e9f2 100%);
+          font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--dark-text);
+          margin: 0;
+          padding: 20px;
+        }
+        
+        .login-container {
+          width: 90%;
+          max-width: 450px;
+          padding: 2.5rem;
+          background-color: #fff;
+          border-radius: 12px;
+          box-shadow: var(--card-shadow);
+          transform: translateY(0);
+          transition: var(--transition);
+          position: relative;
+          overflow: hidden;
+          margin: 0 auto;
+        }
+        
+        .login-container:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12);
+        }
+        
+        .login-container::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 6px;
+          background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        }
+        
+        .login-title {
+          text-align: center;
+          margin-bottom: 2rem;
+          color: var(--dark-text);
+          font-weight: 700;
+          position: relative;
+        }
+        
+        .login-title::after {
+          content: "";
+          display: block;
+          width: 60px;
+          height: 3px;
+          background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+          margin: 0.8rem auto 0;
+          border-radius: 3px;
+        }
+        
+        .form-control {
+          border: 2px solid #e9ecef;
+          padding: 0.8rem 1rem;
+          border-radius: 8px;
+          transition: var(--transition);
+        }
+        
+        .form-control:focus {
+          border-color: var(--primary-color);
+          box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+        }
+        
+        .form-label {
+          font-weight: 500;
+          color: var(--dark-text);
+        }
+        
+        .form-text {
+          color: var(--light-text);
+          font-size: 0.85rem;
+        }
+        
+        .login-btn {
+          width: 100%;
+          padding: 0.8rem;
+          border-radius: 8px;
+          background-color: var(--primary-color);
+          border: none;
+          font-weight: 500;
+          letter-spacing: 0.5px;
+          transition: var(--transition);
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .login-btn:hover {
+          background-color: var(--primary-hover);
+          transform: translateY(-2px);
+        }
+        
+        .login-btn:active {
+          transform: translateY(0);
+        }
+        
+        .alert {
+          border-radius: 8px;
+          padding: 1rem;
+          border: none;
+          display: none;
+          animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .password-wrapper {
+          position: relative;
+        }
+        
+        .password-toggle {
+          position: absolute;
+          right: 15px;
+          top: 50%;
+          transform: translateY(-50%);
+          border: none;
+          background: transparent;
+          color: var(--light-text);
+          cursor: pointer;
+        }
+        
+        .brand-icon {
+          text-align: center;
+          margin-bottom: 1.5rem;
+          font-size: 3rem;
+          color: var(--primary-color);
+        }
+      </style>
+    </head>
+    <body>
       <div class="login-container">
+        <div class="brand-icon">
+          <i class="bi bi-hdd-network"></i>
+        </div>
         <h2 class="login-title">多功能API代理管理</h2>
         <div id="loginAlert" class="alert alert-danger mb-3" role="alert"></div>
         <form id="loginForm">
-          <div class="mb-3">
+          <div class="mb-4">
             <label for="password" class="form-label">管理员密码</label>
-            <input type="password" class="form-control" id="password" required>
-            <div class="form-text">请输入代理API密钥作为管理员密码</div>
+            <div class="password-wrapper">
+              <input type="password" class="form-control" id="password" required>
+              <button type="button" class="password-toggle" aria-label="显示/隐藏密码">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <div class="form-text mt-2">请输入代理API密钥作为管理员密码</div>
           </div>
-          <button type="submit" class="btn btn-primary login-btn">登录</button>
+          <button type="submit" class="btn btn-primary login-btn">
+            <i class="bi bi-unlock me-2"></i>登录
+          </button>
         </form>
       </div>
-    </div>
-    
-    <script>
-      document.getElementById('loginForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const password = document.getElementById('password').value;
-        const alertElement = document.getElementById('loginAlert');
-        
-        try {
-          const response = await fetch('/admin/api/login', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ password })
-          });
+      
+      <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+          e.preventDefault();
           
-          const data = await response.json();
+          const password = document.getElementById('password').value;
+          const alertElement = document.getElementById('loginAlert');
           
-          if (data.success) {
-            // 登录成功，跳转到仪表盘
-            window.location.href = '/admin/dashboard';
-          } else {
-            // 显示错误消息
-            alertElement.textContent = data.message || '登录失败';
+          try {
+            const response = await fetch('/admin/api/login', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ password })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+              // 登录成功，跳转到仪表盘
+              window.location.href = '/admin/dashboard';
+            } else {
+              // 显示错误消息
+              alertElement.textContent = data.message || '登录失败';
+              alertElement.style.display = 'block';
+            }
+          } catch (error) {
+            alertElement.textContent = '登录请求失败: ' + error.message;
             alertElement.style.display = 'block';
           }
-        } catch (error) {
-          alertElement.textContent = '登录请求失败: ' + error.message;
-          alertElement.style.display = 'block';
-        }
-      });
-    </script>
-  </body>
+        });
+        
+        // 密码显示切换
+        document.querySelector('.password-toggle').addEventListener('click', function() {
+          const passwordInput = document.getElementById('password');
+          const icon = this.querySelector('i');
+          
+          if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            icon.classList.remove('bi-eye');
+            icon.classList.add('bi-eye-slash');
+          } else {
+            passwordInput.type = 'password';
+            icon.classList.remove('bi-eye-slash');
+            icon.classList.add('bi-eye');
+          }
+        });
+      </script>
+    </body>
   </html>
   `;
   
@@ -501,364 +653,685 @@ function serveDashboardPage() {
   const html = `
   <!DOCTYPE html>
   <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>多功能API代理 - 管理仪表盘</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-      body {
-        background-color: #f8f9fa;
-        font-family: 'Microsoft YaHei', sans-serif;
-        padding-bottom: 30px;
-      }
-      .dashboard-header {
-        background-color: #fff;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        padding: 15px 0;
-        margin-bottom: 30px;
-      }
-      .nav-tabs {
-        margin-bottom: 20px;
-      }
-      .config-card {
-        background-color: #fff;
-        border-radius: 5px;
-        box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        padding: 20px;
-        margin-bottom: 20px;
-      }
-      .card-title {
-        margin-bottom: 20px;
-        color: #333;
-        font-weight: 600;
-      }
-      .btn-save {
-        min-width: 100px;
-      }
-      .status-badge {
-        font-size: 85%;
-      }
-      .alert {
-        display: none;
-      }
-    </style>
-  </head>
-  <body>
-    <header class="dashboard-header">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>多功能API代理 - 管理仪表盘</title>
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+      <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          --primary-color: #4361ee;
+          --primary-hover: #3a56d4;
+          --secondary-color: #7209b7;
+          --accent-color: #4cc9f0;
+          --success-color: #06d6a0;
+          --warning-color: #ffd166;
+          --danger-color: #ef476f;
+          --light-bg: #f8f9fa;
+          --dark-bg: #2b2d42;
+          --card-bg: #ffffff;
+          --dark-text: #2b2d42;
+          --light-text: #8d99ae;
+          --card-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+          --transition: all 0.3s ease;
+        }
+        
+        body {
+          background-color: #f5f7fa;
+          font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+          color: var(--dark-text);
+          padding-bottom: 3rem;
+          min-height: 100vh;
+        }
+        
+        .dashboard-header {
+          background-color: var(--card-bg);
+          box-shadow: 0 3px 15px rgba(0, 0, 0, 0.05);
+          padding: 1.25rem 0;
+          margin-bottom: 2rem;
+          position: sticky;
+          top: 0;
+          z-index: 100;
+        }
+        
+        .header-container {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        
+        .dashboard-brand {
+          display: flex;
+          align-items: center;
+          color: var(--dark-text);
+          text-decoration: none;
+        }
+        
+        .brand-icon {
+          font-size: 1.75rem;
+          color: var(--primary-color);
+          margin-right: 0.75rem;
+        }
+        
+        .nav-tabs {
+          margin-bottom: 1.5rem;
+          border-bottom: 2px solid #e9ecef;
+          padding-bottom: 0;
+        }
+        
+        .nav-tabs .nav-link {
+          border: none;
+          font-weight: 500;
+          color: var(--light-text);
+          padding: 0.75rem 1.25rem;
+          border-radius: 8px 8px 0 0;
+          transition: var(--transition);
+          position: relative;
+        }
+        
+        .nav-tabs .nav-link:hover {
+          color: var(--primary-color);
+          background-color: rgba(67, 97, 238, 0.05);
+        }
+        
+        .nav-tabs .nav-link.active {
+          color: var(--primary-color);
+          background-color: transparent;
+          font-weight: 600;
+        }
+        
+        .nav-tabs .nav-link.active::after {
+          content: "";
+          position: absolute;
+          bottom: -2px;
+          left: 0;
+          width: 100%;
+          height: 3px;
+          background-color: var(--primary-color);
+          border-radius: 3px 3px 0 0;
+        }
+        
+        .nav-tabs .nav-link i {
+          margin-right: 0.5rem;
+        }
+        
+        .config-card {
+          background-color: var(--card-bg);
+          border-radius: 12px;
+          box-shadow: var(--card-shadow);
+          padding: 1.75rem;
+          margin-bottom: 1.5rem;
+          transition: var(--transition);
+          border: none;
+        }
+        
+        .config-card:hover {
+          box-shadow: 0 12px 25px rgba(0, 0, 0, 0.08);
+          transform: translateY(-3px);
+        }
+        
+        .card-title {
+          margin-bottom: 1.5rem;
+          color: var(--dark-text);
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+        }
+        
+        .card-title i {
+          margin-right: 0.75rem;
+          color: var(--primary-color);
+          font-size: 1.25rem;
+        }
+        
+        .btn-save {
+          min-width: 120px;
+          padding: 0.7rem 1.5rem;
+          font-weight: 500;
+          letter-spacing: 0.5px;
+          border-radius: 8px;
+          background-color: var(--primary-color);
+          border: none;
+          transition: var(--transition);
+        }
+        
+        .btn-save:hover {
+          background-color: var(--primary-hover);
+          transform: translateY(-2px);
+          box-shadow: 0 5px 15px rgba(67, 97, 238, 0.2);
+        }
+        
+        .btn-save:active {
+          transform: translateY(0);
+        }
+        
+        .btn-save i {
+          margin-right: 0.5rem;
+        }
+        
+        .status-badge {
+          font-size: 0.75rem;
+          font-weight: 500;
+          padding: 0.35rem 0.75rem;
+          border-radius: 20px;
+        }
+        
+        .bg-success {
+          background-color: var(--success-color) !important;
+        }
+        
+        .bg-secondary {
+          background-color: var(--light-text) !important;
+        }
+        
+        .form-control {
+          border: 2px solid #e9ecef;
+          padding: 0.8rem 1rem;
+          border-radius: 8px;
+          transition: var(--transition);
+        }
+        
+        .form-control:focus {
+          border-color: var(--primary-color);
+          box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+        }
+        
+        .form-label {
+          font-weight: 500;
+          color: var(--dark-text);
+          margin-bottom: 0.5rem;
+        }
+        
+        .form-text {
+          color: var(--light-text);
+          font-size: 0.85rem;
+          margin-top: 0.5rem;
+        }
+        
+        .alert {
+          border-radius: 10px;
+          padding: 1rem 1.25rem;
+          border: none;
+          display: none;
+          animation: slideDown 0.4s ease;
+        }
+        
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        #logoutBtn {
+          padding: 0.5rem 1rem;
+          border-radius: 8px;
+          border: 2px solid #e9ecef;
+          background: transparent;
+          color: var(--dark-text);
+          font-weight: 500;
+          transition: var(--transition);
+        }
+        
+        #logoutBtn:hover {
+          background-color: #f8f9fa;
+          border-color: #d1d5db;
+        }
+        
+        #logoutBtn i {
+          margin-right: 0.5rem;
+        }
+        
+        .api-key-wrapper {
+          position: relative;
+        }
+        
+        .api-key-toggle {
+          position: absolute;
+          right: 15px;
+          top: 50%;
+          transform: translateY(-50%);
+          border: none;
+          background: transparent;
+          color: var(--light-text);
+          cursor: pointer;
+        }
+        
+        .url-icon {
+          position: absolute;
+          left: 15px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--light-text);
+        }
+        
+        .has-url-icon {
+          padding-left: 2.8rem;
+        }
+        
+        .tab-icon {
+          margin-right: 0.5rem;
+        }
+        
+        .section-divider {
+          height: 1px;
+          background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(233,236,239,1) 50%, rgba(0,0,0,0) 100%);
+          margin: 2rem 0;
+        }
+        
+        .form-footer {
+          display: flex;
+          justify-content: flex-end;
+          margin-top: 1.5rem;
+        }
+      </style>
+    </head>
+    <body>
+      <header class="dashboard-header">
+        <div class="container">
+          <div class="header-container">
+            <a href="/admin/dashboard" class="dashboard-brand">
+              <div class="brand-icon"><i class="bi bi-hdd-network"></i></div>
+              <h1 class="h3 mb-0">多功能API代理管理</h1>
+            </a>
+            <button id="logoutBtn" class="btn">
+              <i class="bi bi-box-arrow-right"></i>退出登录
+            </button>
+          </div>
+        </div>
+      </header>
+      
       <div class="container">
-        <div class="d-flex justify-content-between align-items-center">
-          <h1 class="h3 mb-0">多功能API代理管理</h1>
-          <button id="logoutBtn" class="btn btn-outline-secondary btn-sm">退出登录</button>
+        <div id="statusAlert" class="alert alert-dismissible fade show mb-4" role="alert">
+          <span id="alertMessage"></span>
+          <button type="button" class="btn-close" aria-label="Close" onclick="document.getElementById('statusAlert').style.display='none'"></button>
         </div>
-      </div>
-    </header>
-    
-    <div class="container">
-      <div id="statusAlert" class="alert alert-dismissible fade show mb-4" role="alert">
-        <span id="alertMessage"></span>
-        <button type="button" class="btn-close" aria-label="Close" onclick="document.getElementById('statusAlert').style.display='none'"></button>
+        
+        <ul class="nav nav-tabs" id="configTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="openai-tab" data-bs-toggle="tab" data-bs-target="#openai" type="button" role="tab" aria-controls="openai" aria-selected="true">
+              <i class="bi bi-chat-square-text tab-icon"></i>OpenAI配置
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="anthropic-tab" data-bs-toggle="tab" data-bs-target="#anthropic" type="button" role="tab" aria-controls="anthropic" aria-selected="false">
+              <i class="bi bi-stars tab-icon"></i>Anthropic配置
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="gemini-tab" data-bs-toggle="tab" data-bs-target="#gemini" type="button" role="tab" aria-controls="gemini" aria-selected="false">
+              <i class="bi bi-gem tab-icon"></i>Gemini配置
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab" aria-controls="general" aria-selected="false">
+              <i class="bi bi-gear tab-icon"></i>通用设置
+            </button>
+          </li>
+        </ul>
+        
+        <div class="tab-content" id="configTabsContent">
+          <!-- OpenAI配置 -->
+          <div class="tab-pane fade show active" id="openai" role="tabpanel" aria-labelledby="openai-tab">
+            <div class="config-card">
+              <h5 class="card-title"><i class="bi bi-chat-square-text"></i>OpenAI格式 API配置</h5>
+              <form id="openaiForm">
+                <div class="mb-4">
+                  <label for="defaultUpstreamUrl" class="form-label">API端点URL</label>
+                  <div class="position-relative">
+                    <i class="bi bi-link-45deg url-icon"></i>
+                    <input type="url" class="form-control has-url-icon" id="defaultUpstreamUrl" placeholder="https://api.openai.com">
+                  </div>
+                  <div class="form-text">OpenAI格式 API端点URL，默认为官方API</div>
+                </div>
+                <div class="mb-4">
+                  <label for="defaultOutgoingApiKey" class="form-label">API密钥</label>
+                  <div class="api-key-wrapper">
+                    <input type="password" class="form-control" id="defaultOutgoingApiKey" placeholder="sk-...">
+                    <button type="button" class="api-key-toggle" data-target="defaultOutgoingApiKey">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                  </div>
+                  <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
+                </div>
+                <div class="form-footer">
+                  <button type="submit" class="btn btn-primary btn-save">
+                    <i class="bi bi-check-circle"></i>保存配置
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+          
+          <!-- Anthropic配置 -->
+          <div class="tab-pane fade" id="anthropic" role="tabpanel" aria-labelledby="anthropic-tab">
+            <div class="config-card">
+              <h5 class="card-title">
+                <i class="bi bi-stars"></i>
+                Anthropic API配置
+                <span id="anthropicStatus" class="badge rounded-pill ms-2 status-badge bg-secondary">未启用</span>
+              </h5>
+              <form id="anthropicForm">
+                <div class="mb-4">
+                  <label for="anthropicUpstreamUrl" class="form-label">API端点URL</label>
+                  <div class="position-relative">
+                    <i class="bi bi-link-45deg url-icon"></i>
+                    <input type="url" class="form-control has-url-icon" id="anthropicUpstreamUrl" placeholder="https://api.anthropic.com">
+                  </div>
+                  <div class="form-text">Anthropic格式 API端点URL</div>
+                </div>
+                <div class="mb-4">
+                  <label for="anthropicApiKey" class="form-label">API密钥</label>
+                  <div class="api-key-wrapper">
+                    <input type="password" class="form-control" id="anthropicApiKey" placeholder="sk-ant-...">
+                    <button type="button" class="api-key-toggle" data-target="anthropicApiKey">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                  </div>
+                  <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
+                </div>
+                <div class="form-footer">
+                  <button type="submit" class="btn btn-primary btn-save">
+                    <i class="bi bi-check-circle"></i>保存配置
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+          
+          <!-- Gemini配置 -->
+          <div class="tab-pane fade" id="gemini" role="tabpanel" aria-labelledby="gemini-tab">
+            <div class="config-card">
+              <h5 class="card-title">
+                <i class="bi bi-gem"></i>
+                Gemini格式 API配置
+                <span id="geminiStatus" class="badge rounded-pill ms-2 status-badge bg-secondary">未启用</span>
+              </h5>
+              <form id="geminiForm">
+                <div class="mb-4">
+                  <label for="geminiUpstreamUrl" class="form-label">API端点URL</label>
+                  <div class="position-relative">
+                    <i class="bi bi-link-45deg url-icon"></i>
+                    <input type="url" class="form-control has-url-icon" id="geminiUpstreamUrl" placeholder="https://generativelanguage.googleapis.com">
+                  </div>
+                  <div class="form-text">Gemini API端点URL</div>
+                </div>
+                <div class="mb-4">
+                  <label for="geminiApiKey" class="form-label">API密钥</label>
+                  <div class="api-key-wrapper">
+                    <input type="password" class="form-control" id="geminiApiKey" placeholder="AIzaSy...">
+                    <button type="button" class="api-key-toggle" data-target="geminiApiKey">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                  </div>
+                  <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
+                </div>
+                <div class="form-footer">
+                  <button type="submit" class="btn btn-primary btn-save">
+                    <i class="bi bi-check-circle"></i>保存配置
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+          
+          <!-- 通用设置 -->
+          <div class="tab-pane fade" id="general" role="tabpanel" aria-labelledby="general-tab">
+            <div class="config-card">
+              <h5 class="card-title"><i class="bi bi-shield-lock"></i>代理设置</h5>
+              <form id="proxyForm">
+                <div class="mb-4">
+                  <label for="proxyApiKey" class="form-label">代理API密钥</label>
+                  <div class="api-key-wrapper">
+                    <input type="password" class="form-control" id="proxyApiKey" placeholder="">
+                    <button type="button" class="api-key-toggle" data-target="proxyApiKey">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                  </div>
+                  <div class="form-text">客户端访问此代理时需要使用的API密钥，也是管理界面的登录密码</div>
+                </div>
+                <div class="form-footer">
+                  <button type="submit" class="btn btn-primary btn-save">
+                    <i class="bi bi-check-circle"></i>保存配置
+                  </button>
+                </div>
+              </form>
+            </div>
+            
+            <div class="config-card">
+              <h5 class="card-title"><i class="bi bi-speedometer2"></i>流式输出优化</h5>
+              <form id="streamForm">
+                <div class="row">
+                  <div class="col-md-6 mb-4">
+                    <label for="minDelay" class="form-label">最小延迟(毫秒)</label>
+                    <input type="number" class="form-control" id="minDelay" min="0" max="100" step="1">
+                    <div class="form-text">字符间最小延迟时间，影响输出速度</div>
+                  </div>
+                  
+                  <div class="col-md-6 mb-4">
+                    <label for="maxDelay" class="form-label">最大延迟(毫秒)</label>
+                    <input type="number" class="form-control" id="maxDelay" min="1" max="500" step="1">
+                    <div class="form-text">字符间最大延迟时间，影响输出速度</div>
+                  </div>
+                </div>
+                
+                <div class="row">
+                  <div class="col-md-6 mb-4">
+                    <label for="adaptiveDelayFactor" class="form-label">自适应延迟因子</label>
+                    <input type="number" class="form-control" id="adaptiveDelayFactor" min="0" max="2" step="0.1">
+                    <div class="form-text">延迟自适应调整因子，值越大延迟变化越明显</div>
+                  </div>
+                  
+                  <div class="col-md-6 mb-4">
+                    <label for="chunkBufferSize" class="form-label">块缓冲区大小</label>
+                    <input type="number" class="form-control" id="chunkBufferSize" min="1" max="50" step="1">
+                    <div class="form-text">计算平均响应大小的缓冲区大小</div>
+                  </div>
+                </div>
+                
+                <div class="form-footer">
+                  <button type="submit" class="btn btn-primary btn-save">
+                    <i class="bi bi-check-circle"></i>保存配置
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </div>
       
-      <ul class="nav nav-tabs" id="configTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-          <button class="nav-link active" id="openai-tab" data-bs-toggle="tab" data-bs-target="#openai" type="button" role="tab" aria-controls="openai" aria-selected="true">OpenAI配置</button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link" id="anthropic-tab" data-bs-toggle="tab" data-bs-target="#anthropic" type="button" role="tab" aria-controls="anthropic" aria-selected="false">Anthropic配置</button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link" id="gemini-tab" data-bs-toggle="tab" data-bs-target="#gemini" type="button" role="tab" aria-controls="gemini" aria-selected="false">Gemini配置</button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab" aria-controls="general" aria-selected="false">通用设置</button>
-        </li>
-      </ul>
-      
-      <div class="tab-content" id="configTabsContent">
-        <!-- OpenAI配置 -->
-        <div class="tab-pane fade show active" id="openai" role="tabpanel" aria-labelledby="openai-tab">
-          <div class="config-card">
-            <h5 class="card-title">OpenAI格式 API配置</h5>
-            <form id="openaiForm">
-              <div class="mb-3">
-                <label for="defaultUpstreamUrl" class="form-label">API端点URL</label>
-                <input type="url" class="form-control" id="defaultUpstreamUrl" placeholder="https://api.openai.com">
-                <div class="form-text">OpenAI格式 API端点URL，默认为官方API</div>
-              </div>
-              <div class="mb-3">
-                <label for="defaultOutgoingApiKey" class="form-label">API密钥</label>
-                <input type="text" class="form-control" id="defaultOutgoingApiKey" placeholder="sk-...">
-                <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
-              </div>
-              <button type="submit" class="btn btn-primary btn-save">保存配置</button>
-            </form>
-          </div>
-        </div>
-        
-        <!-- Anthropic配置 -->
-        <div class="tab-pane fade" id="anthropic" role="tabpanel" aria-labelledby="anthropic-tab">
-          <div class="config-card">
-            <h5 class="card-title">
-              Anthropic API配置
-              <span id="anthropicStatus" class="badge rounded-pill ms-2 status-badge bg-secondary">未启用</span>
-            </h5>
-            <form id="anthropicForm">
-              <div class="mb-3">
-                <label for="anthropicUpstreamUrl" class="form-label">API端点URL</label>
-                <input type="url" class="form-control" id="anthropicUpstreamUrl" placeholder="https://api.anthropic.com">
-                <div class="form-text">Anthropic格式 API端点URL</div>
-              </div>
-              <div class="mb-3">
-                <label for="anthropicApiKey" class="form-label">API密钥</label>
-                <input type="text" class="form-control" id="anthropicApiKey" placeholder="sk-ant-...">
-                <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
-              </div>
-              <button type="submit" class="btn btn-primary btn-save">保存配置</button>
-            </form>
-          </div>
-        </div>
-        
-        <!-- Gemini配置 -->
-        <div class="tab-pane fade" id="gemini" role="tabpanel" aria-labelledby="gemini-tab">
-          <div class="config-card">
-            <h5 class="card-title">
-              Gemini格式 API配置
-              <span id="geminiStatus" class="badge rounded-pill ms-2 status-badge bg-secondary">未启用</span>
-            </h5>
-            <form id="geminiForm">
-              <div class="mb-3">
-                <label for="geminiUpstreamUrl" class="form-label">API端点URL</label>
-                <input type="url" class="form-control" id="geminiUpstreamUrl" placeholder="https://generativelanguage.googleapis.com">
-                <div class="form-text">Gemini API端点URL</div>
-              </div>
-              <div class="mb-3">
-                <label for="geminiApiKey" class="form-label">API密钥</label>
-                <input type="text" class="form-control" id="geminiApiKey" placeholder="AIzaSy...">
-                <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
-              </div>
-              <button type="submit" class="btn btn-primary btn-save">保存配置</button>
-            </form>
-          </div>
-        </div>
-        
-        <!-- 通用设置 -->
-        <div class="tab-pane fade" id="general" role="tabpanel" aria-labelledby="general-tab">
-          <div class="config-card">
-            <h5 class="card-title">代理设置</h5>
-            <form id="proxyForm">
-              <div class="mb-3">
-                <label for="proxyApiKey" class="form-label">代理API密钥</label>
-                <input type="text" class="form-control" id="proxyApiKey" placeholder="">
-                <div class="form-text">客户端访问此代理时需要使用的API密钥，也是管理界面的登录密码</div>
-              </div>
-              <button type="submit" class="btn btn-primary btn-save">保存配置</button>
-            </form>
-          </div>
-          
-          <div class="config-card">
-            <h5 class="card-title">流式输出优化</h5>
-            <form id="streamForm">
-              <div class="mb-3">
-                <label for="minDelay" class="form-label">最小延迟(毫秒)</label>
-                <input type="number" class="form-control" id="minDelay" min="0" max="100" step="1">
-                <div class="form-text">字符间最小延迟时间，影响输出速度</div>
-              </div>
-              <div class="mb-3">
-                <label for="maxDelay" class="form-label">最大延迟(毫秒)</label>
-                <input type="number" class="form-control" id="maxDelay" min="1" max="500" step="1">
-                <div class="form-text">字符间最大延迟时间，影响输出速度</div>
-              </div>
-              <div class="mb-3">
-                <label for="adaptiveDelayFactor" class="form-label">自适应延迟因子</label>
-                <input type="number" class="form-control" id="adaptiveDelayFactor" min="0" max="2" step="0.1">
-                <div class="form-text">延迟自适应调整因子，值越大延迟变化越明显</div>
-              </div>
-              <div class="mb-3">
-                <label for="chunkBufferSize" class="form-label">块缓冲区大小</label>
-                <input type="number" class="form-control" id="chunkBufferSize" min="1" max="50" step="1">
-                <div class="form-text">计算平均响应大小的缓冲区大小</div>
-              </div>
-              <button type="submit" class="btn btn-primary btn-save">保存配置</button>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-      // 加载配置
-      async function loadConfig() {
-        try {
-          const response = await fetch('/admin/api/config');
-          
-          if (!response.ok) {
-            if (response.status === 401) {
-              // 未授权，跳转到登录页面
-              window.location.href = '/admin';
-              return;
+      <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+      <script>
+        // 加载配置
+        async function loadConfig() {
+          try {
+            const response = await fetch('/admin/api/config');
+            
+            if (!response.ok) {
+              if (response.status === 401) {
+                // 未授权，跳转到登录页面
+                window.location.href = '/admin';
+                return;
+              }
+              throw new Error('获取配置失败: ' + response.status);
             }
-            throw new Error('获取配置失败: ' + response.status);
-          }
-          
-          const data = await response.json();
-          
-          if (data.success) {
-            // 填充表单
-            const config = data.config;
             
-            // OpenAI配置
-            document.getElementById('defaultUpstreamUrl').value = config.defaultUpstreamUrl || '';
-            document.getElementById('defaultOutgoingApiKey').value = config.defaultOutgoingApiKey || '';
+            const data = await response.json();
             
-            // Anthropic配置
-            document.getElementById('anthropicUpstreamUrl').value = config.anthropicUpstreamUrl || '';
-            document.getElementById('anthropicApiKey').value = config.anthropicApiKey || '';
-            
-            // 更新Anthropic状态徽章
-            const anthropicStatus = document.getElementById('anthropicStatus');
-            if (config.anthropicEnabled) {
-              anthropicStatus.textContent = '已启用';
-              anthropicStatus.classList.remove('bg-secondary');
-              anthropicStatus.classList.add('bg-success');
+            if (data.success) {
+              // 填充表单
+              const config = data.config;
+              
+              // OpenAI配置
+              document.getElementById('defaultUpstreamUrl').value = config.defaultUpstreamUrl || '';
+              document.getElementById('defaultOutgoingApiKey').value = config.defaultOutgoingApiKey || '';
+              
+              // Anthropic配置
+              document.getElementById('anthropicUpstreamUrl').value = config.anthropicUpstreamUrl || '';
+              document.getElementById('anthropicApiKey').value = config.anthropicApiKey || '';
+              
+              // 更新Anthropic状态徽章
+              const anthropicStatus = document.getElementById('anthropicStatus');
+              if (config.anthropicEnabled) {
+                anthropicStatus.textContent = '已启用';
+                anthropicStatus.classList.remove('bg-secondary');
+                anthropicStatus.classList.add('bg-success');
+              } else {
+                anthropicStatus.textContent = '未启用';
+                anthropicStatus.classList.remove('bg-success');
+                anthropicStatus.classList.add('bg-secondary');
+              }
+              
+              // Gemini配置
+              document.getElementById('geminiUpstreamUrl').value = config.geminiUpstreamUrl || '';
+              document.getElementById('geminiApiKey').value = config.geminiApiKey || '';
+              
+              // 更新Gemini状态徽章
+              const geminiStatus = document.getElementById('geminiStatus');
+              if (config.geminiEnabled) {
+                geminiStatus.textContent = '已启用';
+                geminiStatus.classList.remove('bg-secondary');
+                geminiStatus.classList.add('bg-success');
+              } else {
+                geminiStatus.textContent = '未启用';
+                geminiStatus.classList.remove('bg-success');
+                geminiStatus.classList.add('bg-secondary');
+              }
+              
+              // 代理设置
+              document.getElementById('proxyApiKey').value = config.proxyApiKey || '';
+              
+              // 流式输出设置
+              document.getElementById('minDelay').value = config.minDelay || 5;
+              document.getElementById('maxDelay').value = config.maxDelay || 40;
+              document.getElementById('adaptiveDelayFactor').value = config.adaptiveDelayFactor || 0.8;
+              document.getElementById('chunkBufferSize').value = config.chunkBufferSize || 8;
             } else {
-              anthropicStatus.textContent = '未启用';
-              anthropicStatus.classList.remove('bg-success');
-              anthropicStatus.classList.add('bg-secondary');
+              showAlert('danger', data.message || '加载配置失败');
             }
-            
-            // Gemini配置
-            document.getElementById('geminiUpstreamUrl').value = config.geminiUpstreamUrl || '';
-            document.getElementById('geminiApiKey').value = config.geminiApiKey || '';
-            
-            // 更新Gemini状态徽章
-            const geminiStatus = document.getElementById('geminiStatus');
-            if (config.geminiEnabled) {
-              geminiStatus.textContent = '已启用';
-              geminiStatus.classList.remove('bg-secondary');
-              geminiStatus.classList.add('bg-success');
-            } else {
-              geminiStatus.textContent = '未启用';
-              geminiStatus.classList.remove('bg-success');
-              geminiStatus.classList.add('bg-secondary');
-            }
-            
-            // 代理设置
-            document.getElementById('proxyApiKey').value = config.proxyApiKey || '';
-            
-            // 流式输出设置
-            document.getElementById('minDelay').value = config.minDelay || 5;
-            document.getElementById('maxDelay').value = config.maxDelay || 40;
-            document.getElementById('adaptiveDelayFactor').value = config.adaptiveDelayFactor || 0.8;
-            document.getElementById('chunkBufferSize').value = config.chunkBufferSize || 8;
-          } else {
-            showAlert('danger', data.message || '加载配置失败');
+          } catch (error) {
+            showAlert('danger', '加载配置请求失败: ' + error.message);
           }
-        } catch (error) {
-          showAlert('danger', '加载配置请求失败: ' + error.message);
         }
-      }
-      
-      // 显示提示消息
-      function showAlert(type, message) {
-        const alertElement = document.getElementById('statusAlert');
-        const messageElement = document.getElementById('alertMessage');
         
-        alertElement.className = 'alert alert-' + type + ' alert-dismissible fade show mb-4';
-        messageElement.textContent = message;
-        alertElement.style.display = 'block';
+        // 显示提示消息
+        function showAlert(type, message) {
+          const alertElement = document.getElementById('statusAlert');
+          const messageElement = document.getElementById('alertMessage');
+          
+          alertElement.className = 'alert alert-' + type + ' alert-dismissible fade show mb-4';
+          messageElement.textContent = message;
+          alertElement.style.display = 'block';
+          
+          // 自动关闭
+          setTimeout(() => {
+            alertElement.style.display = 'none';
+          }, 5000);
+        }
         
-        // 自动关闭
-        setTimeout(() => {
-          alertElement.style.display = 'none';
-        }, 5000);
-      }
-      
-      // 保存配置
-      async function saveConfig(formData) {
-        try {
-          const response = await fetch('/admin/api/config', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(formData)
+        // 保存配置
+        async function saveConfig(formData) {
+          try {
+            const response = await fetch('/admin/api/config', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(formData)
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+              showAlert('success', data.message || '配置保存成功');
+              // 重新加载配置
+              loadConfig();
+            } else {
+              showAlert('danger', data.message || '配置保存失败');
+            }
+          } catch (error) {
+            showAlert('danger', '保存配置请求失败: ' + error.message);
+          }
+        }
+        
+        // 表单提交处理
+        document.getElementById('openaiForm').addEventListener('submit', function(e) {
+          e.preventDefault();
+          const formData = {
+            defaultUpstreamUrl: document.getElementById('defaultUpstreamUrl').value,
+            defaultOutgoingApiKey: document.getElementById('defaultOutgoingApiKey').value
+          };
+          saveConfig(formData);
+        });
+        
+        document.getElementById('anthropicForm').addEventListener('submit', function(e) {
+          e.preventDefault();
+          const formData = {
+            anthropicUpstreamUrl: document.getElementById('anthropicUpstreamUrl').value,
+            anthropicApiKey: document.getElementById('anthropicApiKey').value
+          };
+          saveConfig(formData);
+        });
+        
+        document.getElementById('geminiForm').addEventListener('submit', function(e) {
+          e.preventDefault();
+          const formData = {
+            geminiUpstreamUrl: document.getElementById('geminiUpstreamUrl').value,
+            geminiApiKey: document.getElementById('geminiApiKey').value
+          };
+          saveConfig(formData);
+        });
+        
+        document.getElementById('proxyForm').addEventListener('submit', function(e) {
+          e.preventDefault();
+          const formData = {
+            proxyApiKey: document.getElementById('proxyApiKey').value
+          };
+          saveConfig(formData);
+        });
+        
+        document.getElementById('streamForm').addEventListener('submit', function(e) {
+          e.preventDefault();
+          const formData = {
+            minDelay: document.getElementById('minDelay').value,
+            maxDelay: document.getElementById('maxDelay').value,
+            adaptiveDelayFactor: document.getElementById('adaptiveDelayFactor').value,
+            chunkBufferSize: document.getElementById('chunkBufferSize').value
+          };
+          saveConfig(formData);
+        });
+        
+        // 密钥显示/隐藏切换功能
+        document.querySelectorAll('.api-key-toggle').forEach(button => {
+          button.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-target');
+            const inputField = document.getElementById(targetId);
+            const icon = this.querySelector('i');
+            
+            if (inputField.type === 'password') {
+              inputField.type = 'text';
+              icon.classList.remove('bi-eye');
+              icon.classList.add('bi-eye-slash');
+            } else {
+              inputField.type = 'password';
+              icon.classList.remove('bi-eye-slash');
+              icon.classList.add('bi-eye');
+            }
           });
-          
-          const data = await response.json();
-          
-          if (data.success) {
-            showAlert('success', data.message || '配置保存成功');
-            // 重新加载配置
-            loadConfig();
-          } else {
-            showAlert('danger', data.message || '配置保存失败');
-          }
-        } catch (error) {
-          showAlert('danger', '保存配置请求失败: ' + error.message);
-        }
-      }
-      
-      // 表单提交处理
-      document.getElementById('openaiForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = {
-          defaultUpstreamUrl: document.getElementById('defaultUpstreamUrl').value,
-          defaultOutgoingApiKey: document.getElementById('defaultOutgoingApiKey').value
-        };
-        saveConfig(formData);
-      });
-      
-      document.getElementById('anthropicForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = {
-          anthropicUpstreamUrl: document.getElementById('anthropicUpstreamUrl').value,
-          anthropicApiKey: document.getElementById('anthropicApiKey').value
-        };
-        saveConfig(formData);
-      });
-      
-      document.getElementById('geminiForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = {
-          geminiUpstreamUrl: document.getElementById('geminiUpstreamUrl').value,
-          geminiApiKey: document.getElementById('geminiApiKey').value
-        };
-        saveConfig(formData);
-      });
-      
-      document.getElementById('proxyForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = {
-          proxyApiKey: document.getElementById('proxyApiKey').value
-        };
-        saveConfig(formData);
-      });
-      
-      document.getElementById('streamForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = {
-          minDelay: document.getElementById('minDelay').value,
-          maxDelay: document.getElementById('maxDelay').value,
-          adaptiveDelayFactor: document.getElementById('adaptiveDelayFactor').value,
-          chunkBufferSize: document.getElementById('chunkBufferSize').value
-        };
-        saveConfig(formData);
-      });
-      
-      // 退出登录
-      document.getElementById('logoutBtn').addEventListener('click', function() {
-        // 清除Cookie
-        document.cookie = 'admin_session=; Path=/admin; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-        // 跳转到登录页面
-        window.location.href = '/admin';
-      });
-      
-      // 页面加载时获取配置
-      window.addEventListener('load', loadConfig);
-    </script>
-  </body>
+        });
+        
+        // 退出登录
+        document.getElementById('logoutBtn').addEventListener('click', function() {
+          // 清除Cookie
+          document.cookie = 'admin_session=; Path=/admin; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+          // 跳转到登录页面
+          window.location.href = '/admin';
+        });
+        
+        // 页面加载时获取配置
+        window.addEventListener('load', loadConfig);
+      </script>
+    </body>
   </html>
   `;
   
