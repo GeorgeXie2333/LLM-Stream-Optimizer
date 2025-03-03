@@ -7,6 +7,7 @@ import { connect } from "cloudflare:sockets";
  * 实现多API密钥负载均衡
  * 智能字符流式输出优化
  * 支持Web管理界面
+ * 使用ShadowFetch替换Cloudflare Fetch
  */
 
 // ShadowFetch 实现 - 从 shadowfetch.js 移植
