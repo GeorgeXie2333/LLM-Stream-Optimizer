@@ -1,9 +1,9 @@
 # LLM Stream Optimizer
 
-Based on Cloudflare Workers!
+Based on ☁️Cloudflare Workers!!!
 
 
-使用：
+🍗食用方法：
 
 
 - 新建一个Cloudflare Workers
@@ -43,7 +43,7 @@ Based on Cloudflare Workers!
 
 ~~**剔除 Cloudflare 自带 fetch 的多余请求头**~~
 ~~使用ShadowFetch替代Cloudflare Fetch~~
-（实现失败）
+（技术不允许我实现，求佬提PR😭）
 
 **支持`/v1/models`路径获取模型列表**
 
