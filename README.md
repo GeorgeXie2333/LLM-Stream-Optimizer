@@ -46,4 +46,4 @@ KV：创建新的KV，绑定名为`CONFIG_KV`
 
 
 Many Thanks To:
-[ShadowFetch]([https://github.com/tysak/shadowfetch])
+[ShadowFetch](https://github.com/tysak/shadowfetch)
