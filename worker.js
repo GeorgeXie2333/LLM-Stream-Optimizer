@@ -1,5 +1,3 @@
-import { connect } from "cloudflare:sockets";
-
 /**
  * 多提供商AI API兼容代理
  * 支持OpenAI、Anthropic、Gemini API
@@ -7,409 +5,7 @@ import { connect } from "cloudflare:sockets";
  * 实现多API密钥负载均衡
  * 智能字符流式输出优化
  * 支持Web管理界面
- * 使用ShadowFetch替换Cloudflare Fetch
  */
-
-// ShadowFetch 实现 - 从 shadowfetch.js 移植
-// -------------- Begin ShadowFetch implementation --------------
-
-// Define text encoder and decoder for converting between strings and byte arrays
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-// Filter out HTTP headers that should not be forwarded
-const HEADER_FILTER_RE = /^(host|accept-encoding|cf-)/i;
-
-// Define the debug log output function
-const log = (message, data = "") => console.log(`[DEBUG] ${message}`, data);
-
-// Concatenate multiple Uint8Arrays into a single new Uint8Array
-function concatUint8Arrays(...arrays) {
-  const total = arrays.reduce((sum, arr) => sum + arr.length, 0);
-  const result = new Uint8Array(total);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result;
-}
-
-// Parse HTTP response headers
-function parseHttpHeaders(buff) {
-  const text = decoder.decode(buff);
-  const headerEnd = text.indexOf("\r\n\r\n");
-  if (headerEnd === -1) return null;
-  const headerSection = text.slice(0, headerEnd).split("\r\n");
-  const statusLine = headerSection[0];
-  const statusMatch = statusLine.match(/HTTP\/1\.[01] (\d+) (.*)/);
-  if (!statusMatch) throw new Error(`Invalid status line: ${statusLine}`);
-  const headers = new Headers();
-  for (let i = 1; i < headerSection.length; i++) {
-    const line = headerSection[i];
-    const idx = line.indexOf(": ");
-    if (idx !== -1) {
-      headers.append(line.slice(0, idx), line.slice(idx + 2));
-    }
-  }
-  return { status: Number(statusMatch[1]), statusText: statusMatch[2], headers, headerEnd };
-}
-
-// Read data from the reader until a double CRLF is encountered
-async function readUntilDoubleCRLF(reader) {
-  let respText = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (value) {
-      respText += decoder.decode(value, { stream: true });
-      if (respText.includes("\r\n\r\n")) break;
-    }
-    if (done) break;
-  }
-  return respText;
-}
-
-// Async generator: read chunked HTTP response data chunks
-async function* readChunks(reader, buff = new Uint8Array()) {
-  while (true) {
-    let pos = -1;
-    for (let i = 0; i < buff.length - 1; i++) {
-      if (buff[i] === 13 && buff[i + 1] === 10) {
-        pos = i;
-        break;
-      }
-    }
-    if (pos === -1) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buff = concatUint8Arrays(buff, value);
-      continue;
-    }
-    const size = parseInt(decoder.decode(buff.slice(0, pos)), 16);
-    log("Read chunk size", size);
-    if (!size) break;
-    buff = buff.slice(pos + 2);
-    while (buff.length < size + 2) {
-      const { value, done } = await reader.read();
-      if (done) throw new Error("Unexpected EOF in chunked encoding");
-      buff = concatUint8Arrays(buff, value);
-    }
-    yield buff.slice(0, size);
-    buff = buff.slice(size + 2);
-  }
-}
-
-// Parse the complete HTTP response
-async function parseResponse(reader) {
-  let buff = new Uint8Array();
-  while (true) {
-    const { value, done } = await reader.read();
-    if (value) {
-      buff = concatUint8Arrays(buff, value);
-      const parsed = parseHttpHeaders(buff);
-      if (parsed) {
-        const { status, statusText, headers, headerEnd } = parsed;
-        const isChunked = headers.get("transfer-encoding")?.includes("chunked");
-        const contentLength = parseInt(headers.get("content-length") || "0", 10);
-        const data = buff.slice(headerEnd + 4);
-        return new Response(
-          new ReadableStream({
-            async start(ctrl) {
-              try {
-                if (isChunked) {
-                  log("Using chunked transfer mode");
-                  for await (const chunk of readChunks(reader, data)) {
-                    ctrl.enqueue(chunk);
-                  }
-                } else {
-                  log("Using fixed-length transfer mode", { contentLength });
-                  let received = data.length;
-                  if (data.length) ctrl.enqueue(data);
-                  while (received < contentLength) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    received += value.length;
-                    ctrl.enqueue(value);
-                  }
-                }
-                ctrl.close();
-              } catch (err) {
-                log("Error parsing response", err);
-                ctrl.error(err);
-              }
-            },
-          }),
-          { status, statusText, headers }
-        );
-      }
-    }
-    if (done) break;
-  }
-  throw new Error("Unable to parse response headers");
-}
-
-// Generate a random Sec-WebSocket-Key
-function generateWebSocketKey() {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return btoa(String.fromCharCode(...bytes));
-}
-
-// Pack a text message into a WebSocket frame
-function packTextFrame(payload) {
-  const FIN_AND_OP = 0x81;
-  const maskBit = 0x80;
-  const len = payload.length;
-  let header;
-  if (len < 126) {
-    header = new Uint8Array(2);
-    header[0] = FIN_AND_OP;
-    header[1] = maskBit | len;
-  } else if (len < 65536) {
-    header = new Uint8Array(4);
-    header[0] = FIN_AND_OP;
-    header[1] = maskBit | 126;
-    header[2] = (len >> 8) & 0xff;
-    header[3] = len & 0xff;
-  } else {
-    throw new Error("Payload too large");
-  }
-  const mask = new Uint8Array(4);
-  crypto.getRandomValues(mask);
-  const maskedPayload = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    maskedPayload[i] = payload[i] ^ mask[i % 4];
-  }
-  return concatUint8Arrays(header, mask, maskedPayload);
-}
-
-// Class for parsing and reassembling WebSocket frames
-class SocketFramesReader {
-  constructor(reader) {
-    this.reader = reader;
-    this.buffer = new Uint8Array();
-    this.fragmentedPayload = null;
-    this.fragmentedOpcode = null;
-  }
-  
-  async ensureBuffer(length) {
-    while (this.buffer.length < length) {
-      const { value, done } = await this.reader.read();
-      if (done) return false;
-      this.buffer = concatUint8Arrays(this.buffer, value);
-    }
-    return true;
-  }
-  
-  async nextFrame() {
-    while (true) {
-      if (!(await this.ensureBuffer(2))) return null;
-      const first = this.buffer[0],
-        second = this.buffer[1],
-        fin = (first >> 7) & 1,
-        opcode = first & 0x0f,
-        isMasked = (second >> 7) & 1;
-      let payloadLen = second & 0x7f,
-        offset = 2;
-      if (payloadLen === 126) {
-        if (!(await this.ensureBuffer(offset + 2))) return null;
-        payloadLen = (this.buffer[offset] << 8) | this.buffer[offset + 1];
-        offset += 2;
-      } else if (payloadLen === 127) {
-        throw new Error("127 length mode is not supported");
-      }
-      let mask;
-      if (isMasked) {
-        if (!(await this.ensureBuffer(offset + 4))) return null;
-        mask = this.buffer.slice(offset, offset + 4);
-        offset += 4;
-      }
-      if (!(await this.ensureBuffer(offset + payloadLen))) return null;
-      let payload = this.buffer.slice(offset, offset + payloadLen);
-      if (isMasked && mask) {
-        for (let i = 0; i < payload.length; i++) {
-          payload[i] ^= mask[i % 4];
-        }
-      }
-      this.buffer = this.buffer.slice(offset + payloadLen);
-      if (opcode === 0) {
-        if (this.fragmentedPayload === null)
-          throw new Error("Received continuation frame without initiation");
-        this.fragmentedPayload = concatUint8Arrays(this.fragmentedPayload, payload);
-        if (fin) {
-          const completePayload = this.fragmentedPayload;
-          const completeOpcode = this.fragmentedOpcode;
-          this.fragmentedPayload = this.fragmentedOpcode = null;
-          return { fin: true, opcode: completeOpcode, payload: completePayload };
-        }
-      } else {
-        if (!fin) {
-          this.fragmentedPayload = payload;
-          this.fragmentedOpcode = opcode;
-          continue;
-        } else {
-          if (this.fragmentedPayload) {
-            this.fragmentedPayload = this.fragmentedOpcode = null;
-          }
-          return { fin, opcode, payload };
-        }
-      }
-    }
-  }
-}
-
-// Forward HTTP requests or WebSocket handshake and data
-async function nativeFetch(req, dstUrl) {
-  const cleanedHeaders = new Headers();
-  for (const [k, v] of req.headers) {
-    if (!HEADER_FILTER_RE.test(k)) {
-      cleanedHeaders.set(k, v);
-    }
-  }
-  
-  const upgradeHeader = req.headers.get("Upgrade")?.toLowerCase();
-  const isWebSocket = upgradeHeader === "websocket";
-  const targetUrl = new URL(dstUrl);
-  
-  if (isWebSocket) {
-    if (!/^wss?:\/\//i.test(dstUrl)) {
-      return new Response("Target does not support WebSocket", { status: 400 });
-    }
-    const isSecure = targetUrl.protocol === "wss:";
-    const port = targetUrl.port || (isSecure ? 443 : 80);
-    const socket = await connect(
-      { hostname: targetUrl.hostname, port: Number(port) },
-      { secureTransport: isSecure ? "on" : "off" }
-    );
-  
-    const key = generateWebSocketKey();
-    cleanedHeaders.set('Host', targetUrl.hostname);
-    cleanedHeaders.set('Connection', 'Upgrade');
-    cleanedHeaders.set('Upgrade', 'websocket');
-    cleanedHeaders.set('Sec-WebSocket-Version', '13');
-    cleanedHeaders.set('Sec-WebSocket-Key', key);
-  
-    const handshakeReq =
-      `GET ${targetUrl.pathname}${targetUrl.search} HTTP/1.1\r\n` +
-      Array.from(cleanedHeaders.entries())
-        .map(([k, v]) => `${k}: ${v}`)
-        .join('\r\n') +
-      '\r\n\r\n';
-
-    log("Sending WebSocket handshake request", handshakeReq);
-    const writer = socket.writable.getWriter();
-    await writer.write(encoder.encode(handshakeReq));
-  
-    const reader = socket.readable.getReader();
-    const handshakeResp = await readUntilDoubleCRLF(reader);
-    log("Received handshake response", handshakeResp);
-    if (
-      !handshakeResp.includes("101") ||
-      !handshakeResp.includes("Switching Protocols")
-    ) {
-      throw new Error("WebSocket handshake failed: " + handshakeResp);
-    }
-  
-    const [client, server] = new WebSocketPair();
-    client.accept();
-    relayWebSocketFrames(client, socket, writer, reader);
-    return new Response(null, { status: 101, webSocket: server });
-  } else {
-    cleanedHeaders.set("Host", targetUrl.hostname);
-    cleanedHeaders.set("accept-encoding", "identity");
-  
-    const port = targetUrl.protocol === "https:" ? 443 : 80;
-    const socket = await connect(
-      { hostname: targetUrl.hostname, port },
-      { secureTransport: targetUrl.protocol === "https:" ? "on" : "off" }
-    );
-    const writer = socket.writable.getWriter();
-    const requestLine =
-      `${req.method} ${targetUrl.pathname}${targetUrl.search} HTTP/1.1\r\n` +
-      Array.from(cleanedHeaders.entries())
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("\r\n") +
-      "\r\n\r\n";
-    log("Sending request", requestLine);
-    await writer.write(encoder.encode(requestLine));
-  
-    if (req.body) {
-      log("Forwarding request body");
-      for await (const chunk of req.body) {
-        await writer.write(chunk);
-      }
-    }
-    return await parseResponse(socket.readable.getReader());
-  }
-}
-
-// Relay WebSocket frames bidirectionally
-function relayWebSocketFrames(ws, socket, writer, reader) {
-  ws.addEventListener("message", async (event) => {
-    let payload;
-    if (typeof event.data === "string") {
-      payload = encoder.encode(event.data);
-    } else if (event.data instanceof ArrayBuffer) {
-      payload = new Uint8Array(event.data);
-    } else {
-      payload = event.data;
-    }
-    const frame = packTextFrame(payload);
-    try {
-      await writer.write(frame);
-    } catch (e) {
-      log("Remote write error", e);
-    }
-  });
-  
-  (async function relayFrames() {
-    const frameReader = new SocketFramesReader(reader);
-    try {
-      while (true) {
-        const frame = await frameReader.nextFrame();
-        if (!frame) break;
-        switch (frame.opcode) {
-          case 1: // Text frame
-          case 2: // Binary frame
-            ws.send(frame.payload);
-            break;
-          case 8: // Close frame
-            log("Received Close frame, closing WebSocket");
-            ws.close(1000);
-            return;
-          default:
-            log(`Received unknown frame type, Opcode: ${frame.opcode}`);
-        }
-      }
-    } catch (e) {
-      log("Error reading remote frame", e);
-    } finally {
-      ws.close();
-      writer.releaseLock();
-      socket.close();
-    }
-  })();
-  
-  ws.addEventListener("close", () => socket.close());
-}
-
-// 实现一个与原生fetch兼容的接口，内部使用nativeFetch
-async function shadowFetch(urlOrRequest, init = {}) {
-  let request;
-  let url;
-  
-  if (urlOrRequest instanceof Request) {
-    request = urlOrRequest;
-    url = request.url;
-  } else {
-    url = urlOrRequest;
-    request = new Request(url, init);
-  }
-  
-  return await nativeFetch(request, url);
-}
-
-// -------------- End ShadowFetch implementation --------------
 
 // KV配置键名
 const KV_CONFIG_KEYS = {
@@ -469,7 +65,7 @@ export default {
 async function loadConfigFromKV(env) {
   // 检查是否有KV绑定
   if (!env.CONFIG_KV) {
-    console.log("未检测到KV绑定,使用环境变量作为配置");
+    console.log("未检测到KV绑定，使用环境变量作为配置");
     return getDefaultConfig(env);
   }
 
@@ -525,7 +121,7 @@ async function loadConfigFromKV(env) {
     // 等待所有KV读取完成
     await Promise.all(promises);
     
-    // 如果KV中没有某些配置,则使用环境变量作为后备
+    // 如果KV中没有某些配置，则使用环境变量作为后备
     config.defaultUpstreamUrl = config.defaultUpstreamUrl || env.UPSTREAM_URL || "https://api.openai.com";
     config.defaultOutgoingApiKey = config.defaultOutgoingApiKey || env.OUTGOING_API_KEY || "";
     
@@ -573,7 +169,7 @@ function getDefaultConfig(env) {
 // 将配置保存到KV存储
 async function saveConfigToKV(env, config) {
   if (!env.CONFIG_KV) {
-    return { success: false, message: "未检测到KV绑定,无法保存配置" };
+    return { success: false, message: "未检测到KV绑定，无法保存配置" };
   }
 
   try {
@@ -623,11 +219,11 @@ async function handleAdminRequest(request, env, ctx) {
   const isLoggedIn = await checkAdminSession(request, env);
   
   if (path === '/admin/dashboard') {
-    // 如果已登录,提供仪表盘
+    // 如果已登录，提供仪表盘
     if (isLoggedIn) {
       return serveDashboardPage();
     } else {
-      // 未登录,重定向到登录页面
+      // 未登录，重定向到登录页面
       return Response.redirect(`${url.origin}/admin`, 302);
     }
   }
@@ -689,7 +285,7 @@ async function handleLoginRequest(request, env) {
       });
     }
     
-    // 生成会话令牌(使用密码的哈希作为会话令牌)
+    // 生成会话令牌（使用密码的哈希作为会话令牌）
     const sessionToken = await sha256(config.proxyApiKey);
     
     // 返回成功并设置Cookie
@@ -766,7 +362,7 @@ async function handleConfigApiRequest(request, env) {
         chunkBufferSize: parseInt(body.chunkBufferSize) || currentConfig.chunkBufferSize
       };
       
-      // 仅更新非空API密钥(防止覆盖现有密钥)
+      // 仅更新非空API密钥（防止覆盖现有密钥）
       if (body.defaultOutgoingApiKey && !body.defaultOutgoingApiKey.includes('*')) {
         newConfig.defaultOutgoingApiKey = body.defaultOutgoingApiKey;
       }
@@ -878,7 +474,7 @@ function serveLoginPage() {
           const data = await response.json();
           
           if (data.success) {
-            // 登录成功,跳转到仪表盘
+            // 登录成功，跳转到仪表盘
             window.location.href = '/admin/dashboard';
           } else {
             // 显示错误消息
@@ -988,12 +584,12 @@ function serveDashboardPage() {
               <div class="mb-3">
                 <label for="defaultUpstreamUrl" class="form-label">API端点URL</label>
                 <input type="url" class="form-control" id="defaultUpstreamUrl" placeholder="https://api.openai.com">
-                <div class="form-text">OpenAI格式 API端点URL,默认为官方API</div>
+                <div class="form-text">OpenAI格式 API端点URL，默认为官方API</div>
               </div>
               <div class="mb-3">
                 <label for="defaultOutgoingApiKey" class="form-label">API密钥</label>
                 <input type="text" class="form-control" id="defaultOutgoingApiKey" placeholder="sk-...">
-                <div class="form-text">可以设置多个API密钥,使用逗号分隔,系统会自动负载均衡</div>
+                <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
               </div>
               <button type="submit" class="btn btn-primary btn-save">保存配置</button>
             </form>
@@ -1016,7 +612,7 @@ function serveDashboardPage() {
               <div class="mb-3">
                 <label for="anthropicApiKey" class="form-label">API密钥</label>
                 <input type="text" class="form-control" id="anthropicApiKey" placeholder="sk-ant-...">
-                <div class="form-text">可以设置多个API密钥,使用逗号分隔,系统会自动负载均衡</div>
+                <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
               </div>
               <button type="submit" class="btn btn-primary btn-save">保存配置</button>
             </form>
@@ -1039,7 +635,7 @@ function serveDashboardPage() {
               <div class="mb-3">
                 <label for="geminiApiKey" class="form-label">API密钥</label>
                 <input type="text" class="form-control" id="geminiApiKey" placeholder="AIzaSy...">
-                <div class="form-text">可以设置多个API密钥,使用逗号分隔,系统会自动负载均衡</div>
+                <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
               </div>
               <button type="submit" class="btn btn-primary btn-save">保存配置</button>
             </form>
@@ -1054,7 +650,7 @@ function serveDashboardPage() {
               <div class="mb-3">
                 <label for="proxyApiKey" class="form-label">代理API密钥</label>
                 <input type="text" class="form-control" id="proxyApiKey" placeholder="">
-                <div class="form-text">客户端访问此代理时需要使用的API密钥,也是管理界面的登录密码</div>
+                <div class="form-text">客户端访问此代理时需要使用的API密钥，也是管理界面的登录密码</div>
               </div>
               <button type="submit" class="btn btn-primary btn-save">保存配置</button>
             </form>
@@ -1066,17 +662,17 @@ function serveDashboardPage() {
               <div class="mb-3">
                 <label for="minDelay" class="form-label">最小延迟(毫秒)</label>
                 <input type="number" class="form-control" id="minDelay" min="0" max="100" step="1">
-                <div class="form-text">字符间最小延迟时间,影响输出速度</div>
+                <div class="form-text">字符间最小延迟时间，影响输出速度</div>
               </div>
               <div class="mb-3">
                 <label for="maxDelay" class="form-label">最大延迟(毫秒)</label>
                 <input type="number" class="form-control" id="maxDelay" min="1" max="500" step="1">
-                <div class="form-text">字符间最大延迟时间,影响输出速度</div>
+                <div class="form-text">字符间最大延迟时间，影响输出速度</div>
               </div>
               <div class="mb-3">
                 <label for="adaptiveDelayFactor" class="form-label">自适应延迟因子</label>
                 <input type="number" class="form-control" id="adaptiveDelayFactor" min="0" max="2" step="0.1">
-                <div class="form-text">延迟自适应调整因子,值越大延迟变化越明显</div>
+                <div class="form-text">延迟自适应调整因子，值越大延迟变化越明显</div>
               </div>
               <div class="mb-3">
                 <label for="chunkBufferSize" class="form-label">块缓冲区大小</label>
@@ -1099,7 +695,7 @@ function serveDashboardPage() {
           
           if (!response.ok) {
             if (response.status === 401) {
-              // 未授权,跳转到登录页面
+              // 未授权，跳转到登录页面
               window.location.href = '/admin';
               return;
             }
@@ -1295,7 +891,7 @@ async function sha256(text) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// 遮盖API密钥,仅显示前几位和后几位
+// 遮盖API密钥，仅显示前几位和后几位
 function maskAPIKey(apiKey) {
   if (!apiKey) return '';
   if (apiKey.length <= 8) return apiKey;
@@ -1369,8 +965,8 @@ async function handleRequest(request, config) {
       );
     }
     
-    // 使用shadowFetch发送请求到上游API
-    const upstreamResponse = await shadowFetch(upstreamRequest);
+    // 发送请求到上游API
+    const upstreamResponse = await fetch(upstreamRequest);
     
     // 如果不是流式请求或响应不成功,直接返回上游响应
     if (!isStreamRequest || !upstreamResponse.ok) {
@@ -1473,7 +1069,7 @@ async function getOpenAIModels(request, config) {
       outgoingApiKey
     );
     
-    const response = await shadowFetch(upstreamRequest);
+    const response = await fetch(upstreamRequest);
     if (!response.ok) return { object: "list", data: [] };
     
     const models = await response.json();
@@ -1504,7 +1100,7 @@ async function getGeminiModels(request, config) {
     try {
       // 请求Gemini模型API
       const modelListUrl = `${config.geminiUpstreamUrl}/v1beta/models?key=${apiKey}`;
-      const response = await shadowFetch(modelListUrl);
+      const response = await fetch(modelListUrl);
       
       if (response.ok) {
         const geminiResponse = await response.json();
@@ -1596,7 +1192,7 @@ async function getAnthropicModels(request, config) {
       headers.set("x-api-key", apiKey);
       headers.set("anthropic-version", "2023-06-01");
       
-      const response = await shadowFetch(`${config.anthropicUpstreamUrl}/v1/models`, {
+      const response = await fetch(`${config.anthropicUpstreamUrl}/v1/models`, {
         method: "GET",
         headers: headers
       });
@@ -2283,7 +1879,7 @@ async function processSSELine(line, writer, encoder, delay, config) {
     const data = line.slice(6);
     
     if (data === "[DONE]") {
-      await writer.write(encoder.encode("data: [DONE]\n\n"));
+      await writer.write(encoder.encode("n"));
       return;
     }
     
@@ -2544,7 +2140,7 @@ async function sendContentCharByChar(content, originalJson, writer, encoder, del
     }
     
     // 发送单字符的JSON
-    await writer.write(encoder.encode(`}\n\n`));
+    await writer.write(encoder.encode(`data: ${JSON.stringify(charResponse)}\n\n`));
     
     // 添加延迟,除了最后一个字符
     if (i < content.length - 1 && delay > 0) {
