@@ -2315,6 +2315,42 @@ async function parseRequestBody(request) {
         const clonedRequest = request.clone();
         requestBody = await clonedRequest.json();
         isStreamRequest = requestBody.stream === true;
+        
+        // 检查是否有多模态内容
+        if (requestBody.messages) {
+          const hasMultimodalContent = requestBody.messages.some(msg => 
+            Array.isArray(msg.content) && 
+            msg.content.some(item => item.type === 'image_url')
+          );
+          
+          if (hasMultimodalContent) {
+            console.log("检测到多模态请求（包含图片）");
+            
+            // 验证图片格式是否正确
+            for (const msg of requestBody.messages) {
+              if (Array.isArray(msg.content)) {
+                for (const item of msg.content) {
+                  if (item.type === 'image_url' && item.image_url) {
+                    // 记录图片URL类型（base64或URL）
+                    const isBase64 = item.image_url.url.startsWith('data:image/');
+                    console.log(`图片类型: ${isBase64 ? 'base64' : 'URL'}`);
+                    
+                    // 如果是base64，检查格式是否正确
+                    if (isBase64) {
+                      const urlParts = item.image_url.url.split(',');
+                      if (urlParts.length !== 2) {
+                        console.warn("Base64图片格式不正确");
+                      } else {
+                        const mimeType = urlParts[0].split(':')[1].split(';')[0];
+                        console.log(`图片MIME类型: ${mimeType}`);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     } catch (e) {
       console.error("Error parsing request body:", e);
@@ -2353,7 +2389,21 @@ function createUpstreamRequest(url, originalRequest, requestBody, apiKey) {
   
   // 仅在POST请求时添加body
   if (originalRequest.method === "POST" && Object.keys(requestBody).length > 0) {
-    requestInit.body = JSON.stringify(requestBody);
+    // 检查是否有多模态内容（图片等）
+    if (requestBody.messages) {
+      const processedBody = { ...requestBody };
+      
+      // 处理消息中的图片内容
+      processedBody.messages = requestBody.messages.map(msg => {
+        // 如果消息内容是数组（多模态内容），保持原样
+        // OpenAI API原生支持多模态内容，无需特殊处理
+        return msg;
+      });
+      
+      requestInit.body = JSON.stringify(processedBody);
+    } else {
+      requestInit.body = JSON.stringify(requestBody);
+    }
   }
   
   // 返回准备好的请求数据，而不是创建一个Request对象
@@ -2496,8 +2546,30 @@ async function createAnthropicRequest(originalRequest, requestBody, config) {
     anthropicUrl = anthropicUrl.slice(0, -1);
   }
 
-  // 转换请求格式为Anthropic格式
-  const anthropicBody = convertToAnthropicFormat(requestBody);
+  // 检查是否有多模态内容
+  let hasMultimodalContent = false;
+  if (requestBody.messages) {
+    hasMultimodalContent = requestBody.messages.some(msg => 
+      Array.isArray(msg.content) && 
+      msg.content.some(item => item.type === 'image_url')
+    );
+  }
+
+  // 如果有多模态内容，确保使用支持多模态的Claude模型
+  let anthropicBody;
+  if (hasMultimodalContent) {
+    // 转换请求格式为Anthropic格式
+    anthropicBody = convertToAnthropicFormat(requestBody);
+    
+    // 确保使用支持多模态的Claude模型
+    if (!anthropicBody.model.includes('claude-3')) {
+      // 默认使用Claude 3 Opus，它支持多模态
+      anthropicBody.model = 'claude-3-opus-20240229';
+    }
+  } else {
+    // 普通文本请求
+    anthropicBody = convertToAnthropicFormat(requestBody);
+  }
   
   return {
     method: "POST",
@@ -2642,10 +2714,61 @@ function convertToAnthropicFormat(openAiBody) {
         role = "user";
       }
       
-      anthropicBody.messages.push({
-        role: role,
-        content: msg.content
-      });
+      // 处理消息内容
+      if (Array.isArray(msg.content)) {
+        // 多模态内容处理
+        const content = [];
+        
+        for (const item of msg.content) {
+          if (item.type === 'text') {
+            content.push({
+              type: 'text',
+              text: item.text
+            });
+          } else if (item.type === 'image_url') {
+            // 处理图片URL
+            let imageData = item.image_url.url;
+            
+            // 如果是base64格式的图片
+            if (imageData.startsWith('data:image/')) {
+              const mediaType = imageData.split(';')[0].split(':')[1];
+              const base64Data = imageData.split(',')[1];
+              
+              content.push({
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType,
+                  data: base64Data
+                }
+              });
+            } else {
+              // 如果是普通URL
+              content.push({
+                type: 'image',
+                source: {
+                  type: 'url',
+                  url: imageData
+                }
+              });
+            }
+          }
+        }
+        
+        anthropicBody.messages.push({
+          role: role,
+          content: content
+        });
+      } else {
+        // 纯文本内容
+        anthropicBody.messages.push({
+          role: role,
+          content: [{ 
+            type: 'text',
+            text: msg.content 
+          }]
+        });
+      }
     }
   }
   
@@ -2727,6 +2850,8 @@ function convertGeminiToOpenAIFormat(geminiResponse) {
   
   // 处理不同格式的Gemini响应
   let content = "";
+  let hasMultiModalContent = false;
+  let multimodalContent = [];
   
   // 从candidates数组中提取文本内容
   if (geminiResponse.candidates && geminiResponse.candidates.length > 0) {
@@ -2734,7 +2859,31 @@ function convertGeminiToOpenAIFormat(geminiResponse) {
     
     // 处理Gemini API 不同可能的响应结构
     if (candidate.content && candidate.content.parts) {
-      content = candidate.content.parts.map(part => part.text || "").join("");
+      // 检查是否有多模态内容
+      const parts = candidate.content.parts;
+      if (parts.some(part => part.inlineData || part.fileData)) {
+        hasMultiModalContent = true;
+        // 处理多模态内容
+        for (const part of parts) {
+          if (part.text) {
+            multimodalContent.push({
+              type: "text",
+              text: part.text
+            });
+          } else if (part.inlineData) {
+            // 处理嵌入的图片数据
+            multimodalContent.push({
+              type: "image_url",
+              image_url: {
+                url: `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`
+              }
+            });
+          }
+        }
+      } else {
+        // 普通文本内容
+        content = parts.map(part => part.text || "").join("");
+      }
     } else if (candidate.text) {
       content = candidate.text;
     } else if (candidate.content) {
@@ -2750,7 +2899,7 @@ function convertGeminiToOpenAIFormat(geminiResponse) {
       index: 0,
       message: {
         role: "assistant",
-        content: content
+        content: hasMultiModalContent ? multimodalContent : content
       },
       finish_reason: finishReason
     });
@@ -2767,11 +2916,36 @@ function convertGeminiToOpenAIFormat(geminiResponse) {
   } else if (geminiResponse.content) {
     // 处理直接的content对象
     let contentText = "";
+    let hasMultiModalParts = false;
+    let multimodalParts = [];
     
     if (typeof geminiResponse.content === 'string') {
       contentText = geminiResponse.content;
     } else if (geminiResponse.content.parts) {
-      contentText = geminiResponse.content.parts.map(part => part.text || "").join("");
+      // 检查是否有多模态内容
+      const parts = geminiResponse.content.parts;
+      if (parts.some(part => part.inlineData || part.fileData)) {
+        hasMultiModalParts = true;
+        // 处理多模态内容
+        for (const part of parts) {
+          if (part.text) {
+            multimodalParts.push({
+              type: "text",
+              text: part.text
+            });
+          } else if (part.inlineData) {
+            // 处理嵌入的图片数据
+            multimodalParts.push({
+              type: "image_url",
+              image_url: {
+                url: `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`
+              }
+            });
+          }
+        }
+      } else {
+        contentText = parts.map(part => part.text || "").join("");
+      }
     } else {
       contentText = JSON.stringify(geminiResponse.content);
     }
@@ -2780,7 +2954,7 @@ function convertGeminiToOpenAIFormat(geminiResponse) {
       index: 0,
       message: {
         role: "assistant",
-        content: contentText
+        content: hasMultiModalParts ? multimodalParts : contentText
       },
       finish_reason: "stop"
     });
@@ -2808,11 +2982,46 @@ function convertAnthropicToOpenAIFormat(anthropicResponse) {
   // 处理Anthropic响应内容
   if (anthropicResponse.content && anthropicResponse.content.length > 0) {
     let content = "";
+    let hasMultiModalContent = false;
+    let multimodalContent = [];
     
-    // 合并所有内容块
-    for (const block of anthropicResponse.content) {
-      if (block.type === "text") {
-        content += block.text || "";
+    // 检查是否有多模态内容
+    const hasImages = anthropicResponse.content.some(block => block.type === "image");
+    
+    if (hasImages) {
+      hasMultiModalContent = true;
+      // 合并所有内容块，并处理多模态内容
+      for (const block of anthropicResponse.content) {
+        if (block.type === "text") {
+          multimodalContent.push({
+            type: "text",
+            text: block.text || ""
+          });
+        } else if (block.type === "image") {
+          // 处理图片内容
+          if (block.source && block.source.type === "base64") {
+            multimodalContent.push({
+              type: "image_url",
+              image_url: {
+                url: `data:${block.source.media_type || 'image/jpeg'};base64,${block.source.data}`
+              }
+            });
+          } else if (block.source && block.source.type === "url") {
+            multimodalContent.push({
+              type: "image_url",
+              image_url: {
+                url: block.source.url
+              }
+            });
+          }
+        }
+      }
+    } else {
+      // 合并所有文本内容块
+      for (const block of anthropicResponse.content) {
+        if (block.type === "text") {
+          content += block.text || "";
+        }
       }
     }
     
@@ -2820,7 +3029,7 @@ function convertAnthropicToOpenAIFormat(anthropicResponse) {
       index: 0,
       message: {
         role: "assistant",
-        content: content
+        content: hasMultiModalContent ? multimodalContent : content
       },
       finish_reason: anthropicResponse.stop_reason || "stop"
     });
