@@ -896,7 +896,7 @@ function serveLoginPage() {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Better Stream Optimizer - 管理登录</title>
+      <title>LLM Stream Optimizer - 管理登录</title>
       <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
       <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -1057,7 +1057,7 @@ function serveLoginPage() {
         <div class="brand-icon">
           <i class="bi bi-hdd-network"></i>
         </div>
-        <h2 class="login-title">Better Stream Optimizer管理</h2>
+        <h2 class="login-title">LLM Stream Optimizer</h2>
         <div id="loginAlert" class="alert alert-danger mb-3" role="alert"></div>
         <form id="loginForm">
           <div class="mb-4">
@@ -1141,7 +1141,7 @@ function serveDashboardPage() {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Better Stream Optimizer - 管理仪表盘</title>
+      <title>LLM Stream Optimizer - 管理仪表盘</title>
       <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
       <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -1417,7 +1417,7 @@ function serveDashboardPage() {
           <div class="header-container">
             <a href="/admin/dashboard" class="dashboard-brand">
               <div class="brand-icon"><i class="bi bi-hdd-network"></i></div>
-              <h1 class="h3 mb-0">Better Stream Optimizer管理</h1>
+              <h1 class="h3 mb-0">LLM Stream Optimizer - Dashboard</h1>
             </a>
             <button id="logoutBtn" class="btn">
               <i class="bi bi-box-arrow-right"></i>退出登录
