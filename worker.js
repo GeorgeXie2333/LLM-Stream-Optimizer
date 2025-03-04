@@ -4,7 +4,7 @@
  * 自动检测模型类型路由到相应API
  * 实现多API密钥负载均衡
  * 智能字符流式输出优化
- * 支持Web管理界面
+ * 美观的Web管理界面
  */
 
 // KV配置键名
@@ -581,6 +581,7 @@ async function loadConfigFromKV(env) {
             break;
           case "OUTGOING_API_KEY":
             config.defaultOutgoingApiKey = value;
+            config.defaultEnabled = !!value;
             break;
           case "GEMINI_URL":
             config.geminiUpstreamUrl = value;
@@ -811,6 +812,7 @@ async function handleConfigApiRequest(request, env) {
       const safeConfig = {
         defaultUpstreamUrl: config.defaultUpstreamUrl,
         defaultOutgoingApiKey: maskAPIKey(config.defaultOutgoingApiKey),
+        defaultEnabled: config.defaultEnabled,
         geminiEnabled: config.geminiEnabled,
         geminiUpstreamUrl: config.geminiUpstreamUrl,
         geminiApiKey: maskAPIKey(config.geminiApiKey),
@@ -850,20 +852,32 @@ async function handleConfigApiRequest(request, env) {
       // 仅更新非空API密钥（防止覆盖现有密钥）
       if (body.defaultOutgoingApiKey && !body.defaultOutgoingApiKey.includes('*')) {
         newConfig.defaultOutgoingApiKey = body.defaultOutgoingApiKey;
+        newConfig.defaultEnabled = true;
+      } else if (body.hasOwnProperty('defaultOutgoingApiKey') && body.defaultOutgoingApiKey === '') {
+        newConfig.defaultOutgoingApiKey = '';
+        newConfig.defaultEnabled = false;
       }
       
       if (body.geminiApiKey && !body.geminiApiKey.includes('*')) {
         newConfig.geminiApiKey = body.geminiApiKey;
-        newConfig.geminiEnabled = !!body.geminiApiKey;
+        newConfig.geminiEnabled = true;
+      } else if (body.hasOwnProperty('geminiApiKey') && body.geminiApiKey === '') {
+        newConfig.geminiApiKey = '';
+        newConfig.geminiEnabled = false;
       }
       
       if (body.anthropicApiKey && !body.anthropicApiKey.includes('*')) {
         newConfig.anthropicApiKey = body.anthropicApiKey;
-        newConfig.anthropicEnabled = !!body.anthropicApiKey;
+        newConfig.anthropicEnabled = true;
+      } else if (body.hasOwnProperty('anthropicApiKey') && body.anthropicApiKey === '') {
+        newConfig.anthropicApiKey = '';
+        newConfig.anthropicEnabled = false;
       }
       
       if (body.proxyApiKey && !body.proxyApiKey.includes('*')) {
         newConfig.proxyApiKey = body.proxyApiKey;
+      } else if (body.hasOwnProperty('proxyApiKey') && body.proxyApiKey === '') {
+        newConfig.proxyApiKey = '';
       }
       
       // 保存配置
@@ -903,14 +917,19 @@ function serveLoginPage() {
       <style>
         :root {
           --primary-color: #4361ee;
-          --primary-hover: #3a56d4;
+          --primary-hover: #2e4fd6;
           --secondary-color: #7209b7;
           --accent-color: #4cc9f0;
+          --success-color: #06d6a0;
+          --warning-color: #ffd166;
+          --danger-color: #ef476f;
           --light-bg: #f8f9fa;
+          --dark-bg: #2b2d42;
+          --card-bg: #ffffff;
           --dark-text: #2b2d42;
           --light-text: #8d99ae;
-          --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-          --transition: all 0.3s ease;
+          --card-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+          --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         }
         
         body {
@@ -923,25 +942,52 @@ function serveLoginPage() {
           color: var(--dark-text);
           margin: 0;
           padding: 20px;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        /* 背景图形 */
+        body::before, body::after {
+          content: '';
+          position: absolute;
+          width: 1000px;
+          height: 1000px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, rgba(67, 97, 238, 0.05), rgba(114, 9, 183, 0.05));
+          z-index: -1;
+        }
+        
+        body::before {
+          top: -600px;
+          right: -300px;
+        }
+        
+        body::after {
+          bottom: -600px;
+          left: -300px;
+          background: linear-gradient(135deg, rgba(76, 201, 240, 0.05), rgba(67, 97, 238, 0.05));
         }
         
         .login-container {
           width: 90%;
           max-width: 450px;
-          padding: 2.5rem;
+          padding: 3rem;
           background-color: #fff;
-          border-radius: 12px;
+          border-radius: 16px;
           box-shadow: var(--card-shadow);
           transform: translateY(0);
           transition: var(--transition);
           position: relative;
           overflow: hidden;
           margin: 0 auto;
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
         .login-container:hover {
-          transform: translateY(-5px);
-          box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12);
+          transform: translateY(-8px);
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
         }
         
         .login-container::before {
@@ -954,173 +1000,232 @@ function serveLoginPage() {
           background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
         }
         
+        .login-header {
+          text-align: center;
+          margin-bottom: 2.5rem;
+        }
+        
+        .login-icon {
+          font-size: 3rem;
+          background: linear-gradient(120deg, var(--primary-color), var(--secondary-color));
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          margin-bottom: 1rem;
+          display: inline-block;
+        }
+        
         .login-title {
           text-align: center;
-          margin-bottom: 2rem;
+          margin-bottom: 0.5rem;
           color: var(--dark-text);
           font-weight: 700;
           position: relative;
+          letter-spacing: -0.5px;
         }
         
-        .login-title::after {
-          content: "";
-          display: block;
-          width: 60px;
-          height: 3px;
-          background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-          margin: 0.8rem auto 0;
-          border-radius: 3px;
+        .login-subtitle {
+          color: var(--light-text);
+          font-size: 0.95rem;
+          margin-bottom: 0;
+        }
+        
+        .form-group {
+          margin-bottom: 1.5rem;
+          position: relative;
         }
         
         .form-control {
           border: 2px solid #e9ecef;
-          padding: 0.8rem 1rem;
-          border-radius: 8px;
+          padding: 1rem 1.25rem;
+          border-radius: 12px;
           transition: var(--transition);
+          font-size: 0.95rem;
+          background-color: rgba(249, 250, 251, 0.8);
         }
         
         .form-control:focus {
           border-color: var(--primary-color);
-          box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+          box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.15);
+          background-color: #fff;
+        }
+        
+        .form-control:hover {
+          border-color: #d0d4d9;
         }
         
         .form-label {
-          font-weight: 500;
+          font-weight: 600;
           color: var(--dark-text);
+          margin-bottom: 0.75rem;
+          font-size: 0.95rem;
         }
         
         .form-text {
           color: var(--light-text);
           font-size: 0.85rem;
+          margin-top: 0.5rem;
         }
         
-        .login-btn {
+        .btn-login {
           width: 100%;
-          padding: 0.8rem;
-          border-radius: 8px;
-          background-color: var(--primary-color);
+          padding: 0.9rem;
+          border-radius: 12px;
+          background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
           border: none;
-          font-weight: 500;
+          font-weight: 600;
+          font-size: 1rem;
           letter-spacing: 0.5px;
+          box-shadow: 0 5px 15px rgba(67, 97, 238, 0.2);
           transition: var(--transition);
           position: relative;
           overflow: hidden;
         }
         
-        .login-btn:hover {
-          background-color: var(--primary-hover);
-          transform: translateY(-2px);
+        .btn-login:hover {
+          background: linear-gradient(135deg, var(--primary-hover), var(--secondary-color));
+          transform: translateY(-3px);
+          box-shadow: 0 8px 25px rgba(67, 97, 238, 0.3);
         }
         
-        .login-btn:active {
-          transform: translateY(0);
+        .btn-login:active {
+          transform: translateY(-1px);
         }
         
-        .alert {
-          border-radius: 8px;
-          padding: 1rem;
-          border: none;
-          display: none;
-          animation: fadeIn 0.3s ease;
+        /* 闪光效果 */
+        .btn-login::after {
+          content: '';
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: linear-gradient(
+            to right,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.3) 50%,
+            rgba(255, 255, 255, 0) 100%
+          );
+          transform: rotate(30deg);
+          opacity: 0;
+          transition: opacity 0.3s ease;
         }
         
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-10px); }
-          to { opacity: 1; transform: translateY(0); }
+        .btn-login:hover::after {
+          opacity: 1;
+          animation: shine 1.5s ease;
         }
         
-        .password-wrapper {
+        @keyframes shine {
+          0% { left: -50%; }
+          100% { left: 100%; }
+        }
+        
+        .input-with-icon {
           position: relative;
         }
         
-        .password-toggle {
+        .input-icon {
           position: absolute;
-          right: 15px;
+          left: 15px;
           top: 50%;
           transform: translateY(-50%);
-          border: none;
-          background: transparent;
           color: var(--light-text);
-          cursor: pointer;
+          font-size: 1.2rem;
         }
         
-        .brand-icon {
-          text-align: center;
-          margin-bottom: 1.5rem;
-          font-size: 3rem;
-          color: var(--primary-color);
+        .input-with-icon .form-control {
+          padding-left: 3rem;
+        }
+        
+        .alert {
+          border-radius: 12px;
+          padding: 1.25rem 1.5rem;
+          margin-bottom: 2rem;
+          border: none;
+          display: none;
+          animation: slideDown 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+          box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
+        }
+        
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @media (max-width: 768px) {
+          .login-container {
+            padding: 2rem;
+          }
         }
       </style>
     </head>
     <body>
       <div class="login-container">
-        <div class="brand-icon">
-          <i class="bi bi-hdd-network"></i>
+        <div class="login-header">
+          <i class="bi bi-braces-asterisk login-icon"></i>
+          <h1 class="login-title">LLM Stream Optimizer</h1>
+          <p class="login-subtitle">管理员登录</p>
         </div>
-        <h2 class="login-title">LLM Stream Optimizer</h2>
-        <div id="loginAlert" class="alert alert-danger mb-3" role="alert"></div>
+        
+        <div id="loginAlert" class="alert alert-danger" role="alert">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          <span id="alertMessage"></span>
+        </div>
+        
         <form id="loginForm">
-          <div class="mb-4">
+          <div class="form-group">
             <label for="password" class="form-label">管理员密码</label>
-            <div class="password-wrapper">
-              <input type="password" class="form-control" id="password" required>
-              <button type="button" class="password-toggle" aria-label="显示/隐藏密码">
-                <i class="bi bi-eye"></i>
-              </button>
+            <div class="input-with-icon">
+              <i class="bi bi-shield-lock input-icon"></i>
+              <input type="password" class="form-control" id="password" name="password" placeholder="请输入管理员密码" required autocomplete="current-password">
             </div>
-            <div class="form-text mt-2">请输入代理API密钥作为管理员密码</div>
+            <div class="form-text">请输入代理API密钥作为管理员密码</div>
           </div>
-          <button type="submit" class="btn btn-primary login-btn">
-            <i class="bi bi-unlock me-2"></i>登录
-          </button>
+          
+          <div class="form-group">
+            <button type="submit" class="btn btn-login btn-primary">
+              <i class="bi bi-box-arrow-in-right me-2"></i>登录
+            </button>
+          </div>
         </form>
       </div>
       
       <script>
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
           e.preventDefault();
-          
           const password = document.getElementById('password').value;
-          const alertElement = document.getElementById('loginAlert');
           
           try {
             const response = await fetch('/admin/api/login', {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
               },
-              body: JSON.stringify({ password })
+              body: JSON.stringify({ password }),
             });
             
             const data = await response.json();
             
-            if (data.success) {
-              // 登录成功，跳转到仪表盘
+            if (response.ok && data.success) {
               window.location.href = '/admin/dashboard';
             } else {
-              // 显示错误消息
-              alertElement.textContent = data.message || '登录失败';
+              const alertElement = document.getElementById('loginAlert');
+              const messageElement = document.getElementById('alertMessage');
+              messageElement.textContent = data.error || '登录失败，请检查密码';
               alertElement.style.display = 'block';
+              
+              // 自动隐藏警告
+              setTimeout(() => {
+                alertElement.style.display = 'none';
+              }, 5000);
             }
           } catch (error) {
-            alertElement.textContent = '登录请求失败: ' + error.message;
+            console.error('登录出错:', error);
+            const alertElement = document.getElementById('loginAlert');
+            const messageElement = document.getElementById('alertMessage');
+            messageElement.textContent = '登录请求失败，请稍后重试';
             alertElement.style.display = 'block';
-          }
-        });
-        
-        // 密码显示切换
-        document.querySelector('.password-toggle').addEventListener('click', function() {
-          const passwordInput = document.getElementById('password');
-          const icon = this.querySelector('i');
-          
-          if (passwordInput.type === 'password') {
-            passwordInput.type = 'text';
-            icon.classList.remove('bi-eye');
-            icon.classList.add('bi-eye-slash');
-          } else {
-            passwordInput.type = 'password';
-            icon.classList.remove('bi-eye-slash');
-            icon.classList.add('bi-eye');
           }
         });
       </script>
@@ -1148,7 +1253,7 @@ function serveDashboardPage() {
       <style>
         :root {
           --primary-color: #4361ee;
-          --primary-hover: #3a56d4;
+          --primary-hover: #2e4fd6;
           --secondary-color: #7209b7;
           --accent-color: #4cc9f0;
           --success-color: #06d6a0;
@@ -1159,26 +1264,67 @@ function serveDashboardPage() {
           --card-bg: #ffffff;
           --dark-text: #2b2d42;
           --light-text: #8d99ae;
-          --card-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
-          --transition: all 0.3s ease;
+          --card-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+          --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+          --footer-height: 80px;
+        }
+        
+        html, body {
+          height: 100%;
         }
         
         body {
-          background-color: #f5f7fa;
+          background: linear-gradient(135deg, #f5f7fa 0%, #e5e9f2 100%);
           font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
           color: var(--dark-text);
-          padding-bottom: 3rem;
           min-height: 100vh;
+          margin: 0;
+          padding: 0;
+          position: relative;
+          overflow-x: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        
+        /* 背景图形 */
+        body::before, body::after {
+          content: '';
+          position: fixed;
+          width: 1000px;
+          height: 1000px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, rgba(67, 97, 238, 0.05), rgba(114, 9, 183, 0.05));
+          z-index: -1;
+        }
+        
+        body::before {
+          top: -600px;
+          right: -300px;
+        }
+        
+        body::after {
+          bottom: -600px;
+          left: -300px;
+          background: linear-gradient(135deg, rgba(76, 201, 240, 0.05), rgba(67, 97, 238, 0.05));
+        }
+        
+        .main-content {
+          flex: 1 0 auto;
+          padding-bottom: 2rem;
+          width: 100%;
         }
         
         .dashboard-header {
-          background-color: var(--card-bg);
-          box-shadow: 0 3px 15px rgba(0, 0, 0, 0.05);
+          background-color: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          box-shadow: 0 5px 25px rgba(0, 0, 0, 0.05);
           padding: 1.25rem 0;
           margin-bottom: 2rem;
           position: sticky;
           top: 0;
           z-index: 100;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         }
         
         .header-container {
@@ -1196,13 +1342,16 @@ function serveDashboardPage() {
         
         .brand-icon {
           font-size: 1.75rem;
-          color: var(--primary-color);
+          background: linear-gradient(120deg, var(--primary-color), var(--secondary-color));
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
           margin-right: 0.75rem;
         }
         
         .nav-tabs {
           margin-bottom: 1.5rem;
-          border-bottom: 2px solid #e9ecef;
+          border-bottom: 2px solid rgba(233, 236, 239, 0.8);
           padding-bottom: 0;
         }
         
@@ -1234,7 +1383,7 @@ function serveDashboardPage() {
           left: 0;
           width: 100%;
           height: 3px;
-          background-color: var(--primary-color);
+          background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
           border-radius: 3px 3px 0 0;
         }
         
@@ -1244,52 +1393,104 @@ function serveDashboardPage() {
         
         .config-card {
           background-color: var(--card-bg);
-          border-radius: 12px;
+          border-radius: 16px;
           box-shadow: var(--card-shadow);
-          padding: 1.75rem;
-          margin-bottom: 1.5rem;
+          padding: 2rem;
+          margin-bottom: 2rem;
           transition: var(--transition);
           border: none;
+          transform: translateY(0);
+          position: relative;
+          overflow: hidden;
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
         .config-card:hover {
-          box-shadow: 0 12px 25px rgba(0, 0, 0, 0.08);
-          transform: translateY(-3px);
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+          transform: translateY(-8px);
+        }
+        
+        .config-card::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 6px;
+          background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
         }
         
         .card-title {
           margin-bottom: 1.5rem;
           color: var(--dark-text);
-          font-weight: 600;
+          font-weight: 700;
           display: flex;
           align-items: center;
+          letter-spacing: -0.5px;
         }
         
         .card-title i {
           margin-right: 0.75rem;
-          color: var(--primary-color);
-          font-size: 1.25rem;
+          background: linear-gradient(120deg, var(--primary-color), var(--secondary-color));
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          font-size: 1.5rem;
         }
         
         .btn-save {
           min-width: 120px;
-          padding: 0.7rem 1.5rem;
-          font-weight: 500;
+          padding: 0.9rem 1.5rem;
+          font-weight: 600;
           letter-spacing: 0.5px;
-          border-radius: 8px;
-          background-color: var(--primary-color);
+          border-radius: 12px;
+          background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
           border: none;
           transition: var(--transition);
-        }
-        
-        .btn-save:hover {
-          background-color: var(--primary-hover);
-          transform: translateY(-2px);
+          position: relative;
+          overflow: hidden;
           box-shadow: 0 5px 15px rgba(67, 97, 238, 0.2);
         }
         
+        .btn-save:hover {
+          background: linear-gradient(135deg, var(--primary-hover), var(--secondary-color));
+          transform: translateY(-3px);
+          box-shadow: 0 8px 25px rgba(67, 97, 238, 0.3);
+        }
+        
         .btn-save:active {
-          transform: translateY(0);
+          transform: translateY(-1px);
+        }
+        
+        /* 闪光效果 */
+        .btn-save::after {
+          content: '';
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: linear-gradient(
+            to right,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.3) 50%,
+            rgba(255, 255, 255, 0) 100%
+          );
+          transform: rotate(30deg);
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+        
+        .btn-save:hover::after {
+          opacity: 1;
+          animation: shine 1.5s ease;
+        }
+        
+        @keyframes shine {
+          0% { left: -50%; }
+          100% { left: 100%; }
         }
         
         .btn-save i {
@@ -1298,9 +1499,15 @@ function serveDashboardPage() {
         
         .status-badge {
           font-size: 0.75rem;
-          font-weight: 500;
+          font-weight: 600;
           padding: 0.35rem 0.75rem;
           border-radius: 20px;
+          animation: fadeIn 0.5s ease;
+        }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
         
         .bg-success {
@@ -1313,20 +1520,28 @@ function serveDashboardPage() {
         
         .form-control {
           border: 2px solid #e9ecef;
-          padding: 0.8rem 1rem;
-          border-radius: 8px;
+          padding: 1rem 1.25rem;
+          border-radius: 12px;
           transition: var(--transition);
+          font-size: 0.95rem;
+          background-color: rgba(249, 250, 251, 0.8);
         }
         
         .form-control:focus {
           border-color: var(--primary-color);
-          box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+          box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.15);
+          background-color: #fff;
+        }
+        
+        .form-control:hover {
+          border-color: #d0d4d9;
         }
         
         .form-label {
-          font-weight: 500;
+          font-weight: 600;
           color: var(--dark-text);
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.75rem;
+          font-size: 0.95rem;
         }
         
         .form-text {
@@ -1336,22 +1551,23 @@ function serveDashboardPage() {
         }
         
         .alert {
-          border-radius: 10px;
-          padding: 1rem 1.25rem;
+          border-radius: 12px;
+          padding: 1.25rem 1.5rem;
           border: none;
           display: none;
-          animation: slideDown 0.4s ease;
+          animation: slideDown 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+          box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
         }
         
         @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-20px); }
+          from { opacity: 0; transform: translateY(-30px); }
           to { opacity: 1; transform: translateY(0); }
         }
         
         #logoutBtn {
-          padding: 0.5rem 1rem;
-          border-radius: 8px;
-          border: 2px solid #e9ecef;
+          padding: 0.7rem 1.2rem;
+          border-radius: 12px;
+          border: 2px solid rgba(233, 236, 239, 0.8);
           background: transparent;
           color: var(--dark-text);
           font-weight: 500;
@@ -1360,7 +1576,9 @@ function serveDashboardPage() {
         
         #logoutBtn:hover {
           background-color: #f8f9fa;
-          border-color: #d1d5db;
+          border-color: var(--primary-color);
+          color: var(--primary-color);
+          transform: translateY(-2px);
         }
         
         #logoutBtn i {
@@ -1380,6 +1598,11 @@ function serveDashboardPage() {
           background: transparent;
           color: var(--light-text);
           cursor: pointer;
+          transition: var(--transition);
+        }
+        
+        .api-key-toggle:hover {
+          color: var(--primary-color);
         }
         
         .url-icon {
@@ -1409,6 +1632,79 @@ function serveDashboardPage() {
           justify-content: flex-end;
           margin-top: 1.5rem;
         }
+        
+        /* 添加标签动画效果 */
+        .nav-tabs .nav-link {
+          transform: translateY(0);
+        }
+        
+        .nav-tabs .nav-link:hover {
+          transform: translateY(-3px);
+        }
+        
+        .tab-pane {
+          animation: fadeIn 0.6s ease;
+        }
+        
+        /* 美化网站页脚 */
+        .dashboard-footer {
+          text-align: center;
+          padding: 2rem 0;
+          color: var(--light-text);
+          background-color: rgba(255, 255, 255, 0.8);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          border-top: 1px solid rgba(233, 236, 239, 0.8);
+          margin-top: auto;
+          width: 100%;
+          flex-shrink: 0;
+          height: var(--footer-height);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .dashboard-footer p {
+          margin-bottom: 0;
+          font-size: 0.9rem;
+        }
+        
+        /* 添加可爱的小图标 */
+        .feature-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 50px;
+          height: 50px;
+          border-radius: 12px;
+          background: linear-gradient(135deg, rgba(67, 97, 238, 0.1), rgba(76, 201, 240, 0.1));
+          margin-bottom: 1rem;
+        }
+        
+        .feature-icon i {
+          font-size: 1.5rem;
+          color: var(--primary-color);
+        }
+        
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+          .config-card {
+            padding: 1.5rem;
+          }
+          
+          .dashboard-header {
+            padding: 1rem 0;
+          }
+          
+          .dashboard-brand h1 {
+            font-size: 1.25rem;
+          }
+          
+          .nav-tabs .nav-link {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+          }
+        }
       </style>
     </head>
     <body>
@@ -1416,8 +1712,8 @@ function serveDashboardPage() {
         <div class="container">
           <div class="header-container">
             <a href="/admin/dashboard" class="dashboard-brand">
-              <div class="brand-icon"><i class="bi bi-hdd-network"></i></div>
-              <h1 class="h3 mb-0">LLM Stream Optimizer - Dashboard</h1>
+              <div class="brand-icon"><i class="bi bi-braces-asterisk"></i></div>
+              <h1 class="h3 mb-0">LLM Stream Optimizer</h1>
             </a>
             <button id="logoutBtn" class="btn">
               <i class="bi bi-box-arrow-right"></i>退出登录
@@ -1426,7 +1722,7 @@ function serveDashboardPage() {
         </div>
       </header>
       
-      <div class="container">
+      <div class="container flex-grow-1 main-content">
         <div id="statusAlert" class="alert alert-dismissible fade show mb-4" role="alert">
           <span id="alertMessage"></span>
           <button type="button" class="btn-close" aria-label="Close" onclick="document.getElementById('statusAlert').style.display='none'"></button>
@@ -1459,7 +1755,11 @@ function serveDashboardPage() {
           <!-- OpenAI配置 -->
           <div class="tab-pane fade show active" id="openai" role="tabpanel" aria-labelledby="openai-tab">
             <div class="config-card">
-              <h5 class="card-title"><i class="bi bi-chat-square-text"></i>OpenAI格式 API配置</h5>
+              <h5 class="card-title">
+                <i class="bi bi-chat-square-text"></i>
+                OpenAI格式 API配置
+                <span id="openaiStatus" class="badge rounded-pill ms-2 status-badge bg-secondary">未启用</span>
+              </h5>
               <form id="openaiForm">
                 <div class="mb-4">
                   <label for="defaultUpstreamUrl" class="form-label">API端点URL</label>
@@ -1477,7 +1777,7 @@ function serveDashboardPage() {
                       <i class="bi bi-eye"></i>
                     </button>
                   </div>
-                  <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
+                  <div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>
                 </div>
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
@@ -1513,7 +1813,7 @@ function serveDashboardPage() {
                       <i class="bi bi-eye"></i>
                     </button>
                   </div>
-                  <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
+                  <div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>
                 </div>
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
@@ -1549,7 +1849,7 @@ function serveDashboardPage() {
                       <i class="bi bi-eye"></i>
                     </button>
                   </div>
-                  <div class="form-text">可以设置多个API密钥，使用逗号分隔，系统会自动负载均衡</div>
+                  <div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>
                 </div>
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
@@ -1625,6 +1925,13 @@ function serveDashboardPage() {
         </div>
       </div>
       
+      <!-- 添加页脚 -->
+      <footer class="dashboard-footer">
+        <div class="container">
+          <p>LLM Stream Optimizer &copy; <a href="https://github.com/GeorgeXie2333/LLM-Stream-Optimizer">George</a></p>
+        </div>
+      </footer>
+      
       <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
       <script>
         // 加载配置
@@ -1650,6 +1957,18 @@ function serveDashboardPage() {
               // OpenAI配置
               document.getElementById('defaultUpstreamUrl').value = config.defaultUpstreamUrl || '';
               document.getElementById('defaultOutgoingApiKey').value = config.defaultOutgoingApiKey || '';
+              
+              // 更新OpenAI状态徽章
+              const openaiStatus = document.getElementById('openaiStatus');
+              if (config.defaultEnabled) {
+                openaiStatus.textContent = '已启用';
+                openaiStatus.classList.remove('bg-secondary');
+                openaiStatus.classList.add('bg-success');
+              } else {
+                openaiStatus.textContent = '未启用';
+                openaiStatus.classList.remove('bg-success');
+                openaiStatus.classList.add('bg-secondary');
+              }
               
               // Anthropic配置
               document.getElementById('anthropicUpstreamUrl').value = config.anthropicUpstreamUrl || '';
