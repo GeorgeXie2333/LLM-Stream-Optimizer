@@ -687,8 +687,43 @@ async function handleAdminRequest(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname;
   
+  // 检查是否有有效的会话令牌
+  const isLoggedIn = await checkAdminSession(request, env);
+  
+  // 保护所有管理页面，登录API除外
+  if (path.startsWith('/admin/') && 
+      path !== '/admin/' && 
+      path !== '/admin/api/login') {
+    // 如果未登录，重定向到登录页面或返回401
+    if (!isLoggedIn) {
+      // 对API请求返回401，对页面请求重定向
+      if (path.includes('/api/')) {
+        return new Response(JSON.stringify({ success: false, message: "未授权" }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } else {
+        return Response.redirect(`${url.origin}/admin`, 302);
+      }
+    }
+  }
+  
+  if (path === '/admin/dashboard') {
+    // 已经验证了登录状态，直接提供仪表盘
+    return serveDashboardPage();
+  }
+  
   // 提供登录页面
   if (path === '/admin' || path === '/admin/') {
+    // 检查是否已登录
+    const isLoggedIn = await checkAdminSession(request, env);
+    
+    if (isLoggedIn) {
+      // 如果已登录，重定向到仪表盘
+      return Response.redirect(`${url.origin}/admin/dashboard`, 302);
+    }
+    
+    // 未登录则提供登录页面
     return serveLoginPage();
   }
   
@@ -697,21 +732,16 @@ async function handleAdminRequest(request, env, ctx) {
     return handleLoginRequest(request, env);
   }
   
-  if (path === '/admin/api/config') {
-    return handleConfigApiRequest(request, env);
+  if (path === '/admin/api/logout') {
+    return handleLogoutRequest(request, env);
   }
   
-  // 检查是否有有效的会话令牌
-  const isLoggedIn = await checkAdminSession(request, env);
+  if (path === '/admin/api/check-session') {
+    return handleCheckSessionRequest(request, env);
+  }
   
-  if (path === '/admin/dashboard') {
-    // 如果已登录，提供仪表盘
-    if (isLoggedIn) {
-      return serveDashboardPage();
-    } else {
-      // 未登录，重定向到登录页面
-      return Response.redirect(`${url.origin}/admin`, 302);
-    }
+  if (path === '/admin/api/config') {
+    return handleConfigApiRequest(request, env);
   }
   
   // 默认返回404
@@ -725,15 +755,30 @@ async function checkAdminSession(request, env) {
     const cookies = parseCookies(request.headers.get('Cookie') || '');
     const sessionToken = cookies.admin_session;
     
-    if (!sessionToken) {
+    if (!sessionToken || sessionToken.trim() === '') {
+      console.log("没有找到管理员会话token或token为空");
       return false;
     }
     
     // 验证会话令牌
     const config = await loadConfigFromKV(env);
+    
+    // 如果没有配置API密钥，拒绝所有请求
+    if (!config.proxyApiKey) {
+      console.log("未配置proxyApiKey，会话无效");
+      return false;
+    }
+    
     const expectedToken = await sha256(config.proxyApiKey || "");
     
-    return sessionToken === expectedToken;
+    // 确保token完全匹配
+    const isValid = sessionToken === expectedToken;
+    
+    if (!isValid) {
+      console.log("管理员会话token无效");
+    }
+    
+    return isValid;
   } catch (error) {
     console.error("验证管理员会话时出错:", error);
     return false;
@@ -779,7 +824,7 @@ async function handleLoginRequest(request, env) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Set-Cookie': `admin_session=${sessionToken}; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=86400`
+        'Set-Cookie': `admin_session=${sessionToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400; Secure`
       }
     });
   } catch (error) {
@@ -1192,6 +1237,24 @@ function serveLoginPage() {
       </div>
       
       <script>
+        // 页面加载时检查用户是否已登录，避免无效cookie
+        window.addEventListener('load', async () => {
+          try {
+            // 发送请求检查登录状态
+            const checkResponse = await fetch('/admin/api/check-session', {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            
+            // 只有服务器确认会话有效才跳转
+            if (checkResponse.ok && (await checkResponse.json()).isLoggedIn) {
+              window.location.href = '/admin/dashboard';
+            }
+          } catch (error) {
+            console.error('检查会话状态出错:', error);
+          }
+        });
+        
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
           e.preventDefault();
           const password = document.getElementById('password').value;
@@ -1234,7 +1297,12 @@ function serveLoginPage() {
   `;
   
   return new Response(html, {
-    headers: { 'Content-Type': 'text/html;charset=UTF-8' }
+    headers: { 
+      'Content-Type': 'text/html;charset=UTF-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
   });
 }
 
@@ -2125,11 +2193,34 @@ function serveDashboardPage() {
         });
         
         // 退出登录
-        document.getElementById('logoutBtn').addEventListener('click', function() {
-          // 清除Cookie
-          document.cookie = 'admin_session=; Path=/admin; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-          // 跳转到登录页面
-          window.location.href = '/admin';
+        document.getElementById('logoutBtn').addEventListener('click', async function() {
+          try {
+            // 客户端尝试清除所有可能的cookie存储
+            document.cookie = 'admin_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+            document.cookie = 'admin_session=; Path=/admin; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+            document.cookie = 'admin_session=; Path=/admin/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+            
+            // 清除所有本地存储
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // 调用退出登录API
+            const response = await fetch('/admin/api/logout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (response.ok) {
+              // 跳转到登录页面
+              window.location.href = '/admin';
+            } else {
+              console.error('退出登录失败', await response.text());
+              alert('退出登录失败，请刷新页面重试');
+            }
+          } catch (error) {
+            console.error('退出登录出错', error);
+            alert('退出出错，请刷新页面重试');
+          }
         });
         
         // 页面加载时获取配置
@@ -2140,7 +2231,12 @@ function serveDashboardPage() {
   `;
   
   return new Response(html, {
-    headers: { 'Content-Type': 'text/html;charset=UTF-8' }
+    headers: { 
+      'Content-Type': 'text/html;charset=UTF-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
   });
 }
 
@@ -3780,5 +3876,29 @@ function addCorsHeaders(response) {
     status: response.status,
     statusText: response.statusText,
     headers: corsHeaders,
+  });
+}
+
+// 处理退出登录请求
+async function handleLogoutRequest(request, env) {
+  // 创建一个响应清除cookie
+  const response = new Response(JSON.stringify({ success: true, message: "已退出登录" }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  });
+  
+  // 添加两个Set-Cookie头，分别清除不同路径的cookie
+  response.headers.set('Set-Cookie', 'admin_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; HttpOnly; SameSite=Strict; Secure');
+  response.headers.append('Set-Cookie', 'admin_session=; Path=/admin; Expires=Thu, 01 Jan 1970 00:00:01 GMT; HttpOnly; SameSite=Strict; Secure');
+  
+  return response;
+}
+
+// 处理会话检查请求
+async function handleCheckSessionRequest(request, env) {
+  const isLoggedIn = await checkAdminSession(request, env);
+  return new Response(JSON.stringify({ isLoggedIn }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
   });
 }
