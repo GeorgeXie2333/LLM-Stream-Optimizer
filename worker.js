@@ -5,6 +5,7 @@
  * 实现多API密钥负载均衡
  * 智能字符流式输出优化
  * 支持Web管理界面
+ * 使用原生Fetch替换Cloudflare Fetch
  */
 
 // KV配置键名
@@ -38,6 +39,490 @@ const MODEL_PREFIX_MAP = {
   'gemini': 'gemini'
 };
 
+// 导入Cloudflare Sockets API
+import { connect } from "cloudflare:sockets";
+
+// 文本编码器和解码器
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+// 处理HTTP请求头过滤
+const HEADER_FILTER_RE = /^(host|accept-encoding|cf-)/i;
+
+// 连接多个Uint8Array
+function concatUint8Arrays(...arrays) {
+  const total = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+}
+
+// 解析HTTP响应头
+function parseHttpHeaders(buff) {
+  const text = decoder.decode(buff);
+  const headerEnd = text.indexOf("\r\n\r\n");
+  if (headerEnd === -1) return null;
+  const headerSection = text.slice(0, headerEnd).split("\r\n");
+  const statusLine = headerSection[0];
+  const statusMatch = statusLine.match(/HTTP\/1\.[01] (\d+) (.*)/);
+  if (!statusMatch) throw new Error(`状态行无效: ${statusLine}`);
+  const headers = new Headers();
+  for (let i = 1; i < headerSection.length; i++) {
+    const line = headerSection[i];
+    const idx = line.indexOf(": ");
+    if (idx !== -1) {
+      headers.append(line.slice(0, idx), line.slice(idx + 2));
+    }
+  }
+  return { status: Number(statusMatch[1]), statusText: statusMatch[2], headers, headerEnd };
+}
+
+// 读取直到遇到双CRLF (HTTP头结束)
+async function readUntilDoubleCRLF(reader) {
+  let respText = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (value) {
+      respText += decoder.decode(value, { stream: true });
+      if (respText.includes("\r\n\r\n")) break;
+    }
+    if (done) break;
+  }
+  return respText;
+}
+
+// 读取分块编码数据
+async function* readChunks(reader, buff = new Uint8Array()) {
+  while (true) {
+    let pos = -1;
+    for (let i = 0; i < buff.length - 1; i++) {
+      if (buff[i] === 13 && buff[i + 1] === 10) {
+        pos = i;
+        break;
+      }
+    }
+    if (pos === -1) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buff = concatUint8Arrays(buff, value);
+      continue;
+    }
+    const size = parseInt(decoder.decode(buff.slice(0, pos)), 16);
+    if (!size) break;
+    buff = buff.slice(pos + 2);
+    while (buff.length < size + 2) {
+      const { value, done } = await reader.read();
+      if (done) throw new Error("分块编码中意外的EOF");
+      buff = concatUint8Arrays(buff, value);
+    }
+    yield buff.slice(0, size);
+    buff = buff.slice(size + 2);
+  }
+}
+
+// 解析完整HTTP响应
+async function parseResponse(reader) {
+  let buff = new Uint8Array();
+  while (true) {
+    const { value, done } = await reader.read();
+    if (value) {
+      buff = concatUint8Arrays(buff, value);
+      const parsed = parseHttpHeaders(buff);
+      if (parsed) {
+        const { status, statusText, headers, headerEnd } = parsed;
+        const isChunked = headers.get("transfer-encoding")?.includes("chunked");
+        const contentLength = parseInt(headers.get("content-length") || "0", 10);
+        const data = buff.slice(headerEnd + 4);
+        return new Response(
+          new ReadableStream({
+            async start(ctrl) {
+              try {
+                if (isChunked) {
+                  for await (const chunk of readChunks(reader, data)) {
+                    ctrl.enqueue(chunk);
+                  }
+                } else {
+                  let received = data.length;
+                  if (data.length) ctrl.enqueue(data);
+                  while (received < contentLength) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    received += value.length;
+                    ctrl.enqueue(value);
+                  }
+                }
+                ctrl.close();
+              } catch (err) {
+                console.error("解析响应时出错", err);
+                ctrl.error(err);
+              }
+            },
+          }),
+          { status, statusText, headers }
+        );
+      }
+    }
+    if (done) break;
+  }
+  throw new Error("无法解析响应头");
+}
+
+// 生成WebSocket密钥
+function generateWebSocketKey() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes));
+}
+
+// 打包文本WebSocket帧
+function packTextFrame(payload) {
+  const FIN_AND_OP = 0x81;
+  const maskBit = 0x80;
+  const len = payload.length;
+  let header;
+  if (len < 126) {
+    header = new Uint8Array(2);
+    header[0] = FIN_AND_OP;
+    header[1] = maskBit | len;
+  } else if (len < 65536) {
+    header = new Uint8Array(4);
+    header[0] = FIN_AND_OP;
+    header[1] = maskBit | 126;
+    header[2] = (len >> 8) & 0xff;
+    header[3] = len & 0xff;
+  } else {
+    throw new Error("载荷太大");
+  }
+  const mask = new Uint8Array(4);
+  crypto.getRandomValues(mask);
+  const maskedPayload = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    maskedPayload[i] = payload[i] ^ mask[i % 4];
+  }
+  return concatUint8Arrays(header, mask, maskedPayload);
+}
+
+// WebSocket帧解析器
+class SocketFramesReader {
+  constructor(reader) {
+    this.reader = reader;
+    this.buffer = new Uint8Array();
+    this.fragmentedPayload = null;
+    this.fragmentedOpcode = null;
+  }
+  
+  async ensureBuffer(length) {
+    while (this.buffer.length < length) {
+      const { value, done } = await this.reader.read();
+      if (done) return false;
+      this.buffer = concatUint8Arrays(this.buffer, value);
+    }
+    return true;
+  }
+  
+  async nextFrame() {
+    while (true) {
+      if (!(await this.ensureBuffer(2))) return null;
+      const first = this.buffer[0],
+        second = this.buffer[1],
+        fin = (first >> 7) & 1,
+        opcode = first & 0x0f,
+        isMasked = (second >> 7) & 1;
+      let payloadLen = second & 0x7f,
+        offset = 2;
+      if (payloadLen === 126) {
+        if (!(await this.ensureBuffer(offset + 2))) return null;
+        payloadLen = (this.buffer[offset] << 8) | this.buffer[offset + 1];
+        offset += 2;
+      } else if (payloadLen === 127) {
+        throw new Error("不支持127长度模式");
+      }
+      let mask;
+      if (isMasked) {
+        if (!(await this.ensureBuffer(offset + 4))) return null;
+        mask = this.buffer.slice(offset, offset + 4);
+        offset += 4;
+      }
+      if (!(await this.ensureBuffer(offset + payloadLen))) return null;
+      let payload = this.buffer.slice(offset, offset + payloadLen);
+      if (isMasked && mask) {
+        for (let i = 0; i < payload.length; i++) {
+          payload[i] ^= mask[i % 4];
+        }
+      }
+      this.buffer = this.buffer.slice(offset + payloadLen);
+      if (opcode === 0) {
+        if (this.fragmentedPayload === null)
+          throw new Error("收到没有初始化的延续帧");
+        this.fragmentedPayload = concatUint8Arrays(this.fragmentedPayload, payload);
+        if (fin) {
+          const completePayload = this.fragmentedPayload;
+          const completeOpcode = this.fragmentedOpcode;
+          this.fragmentedPayload = this.fragmentedOpcode = null;
+          return { fin: true, opcode: completeOpcode, payload: completePayload };
+        }
+      } else {
+        if (!fin) {
+          this.fragmentedPayload = payload;
+          this.fragmentedOpcode = opcode;
+          continue;
+        } else {
+          if (this.fragmentedPayload) {
+            this.fragmentedPayload = this.fragmentedOpcode = null;
+          }
+          return { fin, opcode, payload };
+        }
+      }
+    }
+  }
+}
+
+// 中继WebSocket帧
+function relayWebSocketFrames(ws, socket, writer, reader) {
+  ws.addEventListener("message", async (event) => {
+    let payload;
+    if (typeof event.data === "string") {
+      payload = encoder.encode(event.data);
+    } else if (event.data instanceof ArrayBuffer) {
+      payload = new Uint8Array(event.data);
+    } else {
+      payload = event.data;
+    }
+    const frame = packTextFrame(payload);
+    try {
+      await writer.write(frame);
+    } catch (e) {
+      console.error("远程写入错误", e);
+    }
+  });
+  
+  (async function relayFrames() {
+    const frameReader = new SocketFramesReader(reader);
+    try {
+      while (true) {
+        const frame = await frameReader.nextFrame();
+        if (!frame) break;
+        switch (frame.opcode) {
+          case 1: // 文本帧
+          case 2: // 二进制帧
+            ws.send(frame.payload);
+            break;
+          case 8: // 关闭帧
+            ws.close(1000);
+            return;
+          default:
+            console.log(`收到未知帧类型, 操作码: ${frame.opcode}`);
+        }
+      }
+    } catch (e) {
+      console.error("读取远程帧时出错", e);
+    } finally {
+      ws.close();
+      writer.releaseLock();
+      socket.close();
+    }
+  })();
+  
+  ws.addEventListener("close", () => socket.close());
+}
+
+// 原生fetch实现
+async function nativeFetch(req, dstUrl) {
+  // 确定实际URL
+  const targetUrl = new URL(dstUrl);
+  
+  // 检查是否为Request对象还是已经构造好的RequestInit对象
+  if (req instanceof Request) {
+    // 清理请求头
+    const cleanedHeaders = new Headers();
+    for (const [k, v] of req.headers) {
+      if (!HEADER_FILTER_RE.test(k)) {
+        cleanedHeaders.set(k, v);
+      }
+    }
+    
+    // 检查是否为WebSocket请求
+    const upgradeHeader = req.headers.get("Upgrade")?.toLowerCase();
+    const isWebSocket = upgradeHeader === "websocket";
+    
+    if (isWebSocket) {
+      // WebSocket处理逻辑保持不变
+      if (!/^wss?:\/\//i.test(dstUrl)) {
+        return new Response("目标不支持WebSocket", { status: 400 });
+      }
+      const isSecure = targetUrl.protocol === "wss:";
+      const port = targetUrl.port || (isSecure ? 443 : 80);
+      // 建立原生socket连接
+      const socket = await connect(
+        { hostname: targetUrl.hostname, port: Number(port) },
+        { secureTransport: isSecure ? "on" : "off" }
+      );
+    
+      // 生成WebSocket握手密钥
+      const key = generateWebSocketKey();
+
+      // 构建握手请求头
+      cleanedHeaders.set('Host', targetUrl.hostname);
+      cleanedHeaders.set('Connection', 'Upgrade');
+      cleanedHeaders.set('Upgrade', 'websocket');
+      cleanedHeaders.set('Sec-WebSocket-Version', '13');
+      cleanedHeaders.set('Sec-WebSocket-Key', key);
+    
+      // 组装握手请求数据
+      const handshakeReq =
+        `GET ${targetUrl.pathname}${targetUrl.search} HTTP/1.1\r\n` +
+        Array.from(cleanedHeaders.entries())
+          .map(([k, v]) => `${k}: ${v}`)
+          .join('\r\n') +
+        '\r\n\r\n';
+
+      console.log("发送WebSocket握手请求", handshakeReq);
+      const writer = socket.writable.getWriter();
+      await writer.write(encoder.encode(handshakeReq));
+    
+      const reader = socket.readable.getReader();
+      const handshakeResp = await readUntilDoubleCRLF(reader);
+      console.log("收到握手响应", handshakeResp);
+      
+      if (
+        !handshakeResp.includes("101") ||
+        !handshakeResp.includes("Switching Protocols")
+      ) {
+        throw new Error("WebSocket握手失败: " + handshakeResp);
+      }
+    
+      // 创建WebSocketPair
+      const [client, server] = new WebSocketPair();
+      client.accept();
+      // 建立双向帧中继
+      relayWebSocketFrames(client, socket, writer, reader);
+      
+      return new Response(null, { status: 101, webSocket: server });
+    } else {
+      // 标准HTTP请求处理
+      cleanedHeaders.set("Host", targetUrl.hostname);
+      cleanedHeaders.set("accept-encoding", "identity");
+      
+      // 先处理请求体，这样我们可以设置正确的Content-Length
+      let bodyBuffer = null;
+      
+      if (req.body) {
+        try {
+          // 尝试复制并获取请求体用于计算长度
+          const clonedReq = req.clone();
+          const bodyChunks = [];
+          for await (const chunk of clonedReq.body) {
+            bodyChunks.push(chunk);
+          }
+          // 合并所有的块
+          bodyBuffer = concatUint8Arrays(...bodyChunks);
+          
+          // 设置Content-Length头
+          cleanedHeaders.set("Content-Length", bodyBuffer.length.toString());
+          console.log(`设置Content-Length: ${bodyBuffer.length}`);
+        } catch (error) {
+          console.error("处理请求体时出错:", error);
+          throw error;
+        }
+      } else {
+        // 如果没有请求体，将Content-Length设置为0
+        cleanedHeaders.set("Content-Length", "0");
+      }
+    
+      const port = targetUrl.port || (targetUrl.protocol === "https:" ? 443 : 80);
+      const socket = await connect(
+        { hostname: targetUrl.hostname, port: Number(port) },
+        { secureTransport: targetUrl.protocol === "https:" ? "on" : "off" }
+      );
+      const writer = socket.writable.getWriter();
+      
+      // 构建请求行和头部
+      const requestLine =
+        `${req.method} ${targetUrl.pathname}${targetUrl.search} HTTP/1.1\r\n` +
+        Array.from(cleanedHeaders.entries())
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\r\n") +
+        "\r\n\r\n";
+        
+      console.log("发送请求", requestLine);
+      await writer.write(encoder.encode(requestLine));
+    
+      // 如果有请求体,发送已缓存的数据
+      if (bodyBuffer) {
+        console.log("发送请求体", bodyBuffer.length);
+        await writer.write(bodyBuffer);
+      }
+      
+      // 解析并返回目标服务器的响应
+      return await parseResponse(socket.readable.getReader());
+    }
+  } else {
+    // 如果是直接传递的RequestInit对象（比如createUpstreamRequest的返回值）
+    // 直接提取需要的数据并发送
+    const method = req.method || "GET";
+    const headers = req.headers || new Headers();
+    const body = req.body;
+    
+    // 清理请求头
+    const cleanedHeaders = new Headers();
+    for (const [k, v] of headers.entries()) {
+      if (!HEADER_FILTER_RE.test(k)) {
+        cleanedHeaders.set(k, v);
+      }
+    }
+    
+    // 标准HTTP请求处理
+    cleanedHeaders.set("Host", targetUrl.hostname);
+    cleanedHeaders.set("accept-encoding", "identity");
+    
+    // 处理请求体
+    let bodyBuffer = null;
+    
+    if (body && typeof body === 'string') {
+      // 如果请求体是字符串，直接编码
+      bodyBuffer = encoder.encode(body);
+      cleanedHeaders.set("Content-Length", bodyBuffer.length.toString());
+    } else if (body) {
+      console.error("不支持的请求体类型", typeof body);
+      throw new Error("不支持的请求体类型");
+    } else {
+      // 如果没有请求体，将Content-Length设置为0
+      cleanedHeaders.set("Content-Length", "0");
+    }
+    
+    const port = targetUrl.port || (targetUrl.protocol === "https:" ? 443 : 80);
+    const socket = await connect(
+      { hostname: targetUrl.hostname, port: Number(port) },
+      { secureTransport: targetUrl.protocol === "https:" ? "on" : "off" }
+    );
+    const writer = socket.writable.getWriter();
+    
+    // 构建请求行和头部
+    const requestLine =
+      `${method} ${targetUrl.pathname}${targetUrl.search} HTTP/1.1\r\n` +
+      Array.from(cleanedHeaders.entries())
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("\r\n") +
+      "\r\n\r\n";
+      
+    console.log("发送请求", requestLine);
+    await writer.write(encoder.encode(requestLine));
+    
+    // 如果有请求体,发送数据
+    if (bodyBuffer) {
+      console.log("发送请求体", bodyBuffer.length);
+      await writer.write(bodyBuffer);
+    }
+    
+    // 解析并返回目标服务器的响应
+    return await parseResponse(socket.readable.getReader());
+  }
+}
+
 // Worker入口函数
 export default {
   async fetch(request, env, ctx) {
@@ -57,8 +542,9 @@ export default {
     // 从KV读取配置
     const config = await loadConfigFromKV(env);
     
-    return handleRequest(request, config);
-  },
+    // 处理API请求
+    return await handleRequest(request, config);
+  }
 };
 
 // 从KV存储加载配置
@@ -1427,7 +1913,8 @@ async function handleRequest(request, config) {
       try {
         upstreamRequest = await createGeminiRequest(request, requestBody, config);
         console.log("Gemini请求URL:", upstreamRequest.url);
-        console.log("Gemini请求体:", await upstreamRequest.clone().text());
+        // 由于现在upstreamRequest是普通对象，直接打印请求体
+        console.log("Gemini请求体:", upstreamRequest.body);
       } catch (error) {
         console.error("创建Gemini请求时出错:", error);
         throw error;
@@ -1445,8 +1932,8 @@ async function handleRequest(request, config) {
       );
     }
     
-    // 发送请求到上游API
-    const upstreamResponse = await fetch(upstreamRequest);
+    // 使用nativeFetch发送请求到上游API
+    const upstreamResponse = await nativeFetch(upstreamRequest, upstreamRequest.url);
     
     // 如果不是流式请求或响应不成功,直接返回上游响应
     if (!isStreamRequest || !upstreamResponse.ok) {
@@ -1542,14 +2029,16 @@ async function getOpenAIModels(request, config) {
     // 如果没有API密钥,则跳过
     if (!outgoingApiKey) return { object: "list", data: [] };
     
-    const upstreamRequest = createUpstreamRequest(
-      `${upstreamUrl}/v1/models`, 
-      request, 
-      {}, 
-      outgoingApiKey
-    );
+    const upstreamRequest = {
+      method: "GET",
+      headers: new Headers({
+        "Authorization": `Bearer ${outgoingApiKey}`,
+        "Content-Type": "application/json"
+      }),
+      url: `${upstreamUrl}/v1/models`
+    };
     
-    const response = await fetch(upstreamRequest);
+    const response = await nativeFetch(upstreamRequest, upstreamRequest.url);
     if (!response.ok) return { object: "list", data: [] };
     
     const models = await response.json();
@@ -1580,7 +2069,16 @@ async function getGeminiModels(request, config) {
     try {
       // 请求Gemini模型API
       const modelListUrl = `${config.geminiUpstreamUrl}/v1beta/models?key=${apiKey}`;
-      const response = await fetch(modelListUrl);
+      // 创建基本请求对象
+      const modelRequest = {
+        method: "GET",
+        headers: new Headers({
+          "Content-Type": "application/json"
+        }),
+        url: modelListUrl
+      };
+      
+      const response = await nativeFetch(modelRequest, modelListUrl);
       
       if (response.ok) {
         const geminiResponse = await response.json();
@@ -1600,60 +2098,36 @@ async function getGeminiModels(request, config) {
           };
         }
       }
-    } catch (e) {
-      console.error("Error fetching Gemini models dynamically:", e);
+    } catch (error) {
+      console.error("Error fetching Gemini models:", error);
     }
     
-    // 如果API调用失败,使用更新后的静态列表
+    // 如果请求失败或没有模型,则返回预设的模型列表
     return {
       object: "list",
       data: [
         {
-          id: "gemini-pro",
+          id: "gemini-1.5-pro-latest",
           object: "model",
-          created: 1686700000, // 近似时间戳
+          created: Math.floor(Date.now() / 1000) - 86400 * 30,
           owned_by: "google"
         },
         {
-          id: "gemini-1.5-pro",
+          id: "gemini-1.5-flash-latest",
           object: "model",
-          created: 1708000000, // 近似时间戳
+          created: Math.floor(Date.now() / 1000) - 86400 * 30,
           owned_by: "google"
         },
         {
-          id: "gemini-1.5-flash",
+          id: "gemini-pro-vision",
           object: "model",
-          created: 1708000000, // 近似时间戳
-          owned_by: "google"
-        },
-        {
-          id: "gemini-2.0-flash",
-          object: "model",
-          created: 1727000000, // 近似时间戳
-          owned_by: "google"
-        },
-        {
-          id: "gemini-2.0-pro-exp",
-          object: "model",
-          created: 1727000000, // 近似时间戳
-          owned_by: "google"
-        },
-        {
-          id: "gemini-2.0-flash-lite",
-          object: "model",
-          created: 1727000000, // 近似时间戳
-          owned_by: "google"
-        },
-        {
-          id: "gemini-2.0-flash-thinking-exp",
-          object: "model",
-          created: 1727000000, // 近似时间戳
+          created: Math.floor(Date.now() / 1000) - 86400 * 60,
           owned_by: "google"
         }
       ]
     };
   } catch (error) {
-    console.error("Error creating Gemini models list:", error);
+    console.error("Error in Gemini models function:", error);
     return { object: "list", data: [] };
   }
 }
@@ -1661,74 +2135,82 @@ async function getGeminiModels(request, config) {
 // 获取Anthropic模型列表
 async function getAnthropicModels(request, config) {
   try {
+    // 确保Anthropic功能已启用且有API密钥
+    if (!config.anthropicEnabled) {
+      return { object: "list", data: [] };
+    }
+    
     const apiKey = getAnthropicApiKey(request, config);
+    if (!apiKey) {
+      return { object: "list", data: [] };
+    }
     
-    // 如果没有API密钥,则跳过
-    if (!apiKey) return { object: "list", data: [] };
-    
-    // 尝试从Anthropic API获取模型列表
+    // 尝试动态获取Anthropic模型
     try {
-      const headers = new Headers();
-      headers.set("x-api-key", apiKey);
-      headers.set("anthropic-version", "2023-06-01");
-      
-      const response = await fetch(`${config.anthropicUpstreamUrl}/v1/models`, {
+      // 创建请求对象
+      const modelRequest = {
         method: "GET",
-        headers: headers
-      });
+        headers: new Headers({
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01"
+        }),
+        url: `${config.anthropicUpstreamUrl}/v1/models`
+      };
+      
+      const response = await nativeFetch(modelRequest, modelRequest.url);
       
       if (response.ok) {
-        const anthropicResponse = await response.json();
+        const anthropicModels = await response.json();
         
-        // 转换为OpenAI格式
-        if (anthropicResponse && Array.isArray(anthropicResponse.models)) {
+        if (anthropicModels && anthropicModels.data) {
+          // 将Anthropic响应格式转换为OpenAI格式
           return {
             object: "list",
-            data: anthropicResponse.models.map(model => ({
-              id: model.id || model.name,
+            data: anthropicModels.data.map(model => ({
+              id: model.id,
               object: "model",
-              created: Math.floor(new Date(model.created || Date.now()).getTime() / 1000),
+              created: Math.floor(Date.now() / 1000) - 86400 * 30, // 近似创建时间
               owned_by: "anthropic"
             }))
           };
         }
       }
-    } catch (e) {
-      console.error("Error fetching Anthropic models dynamically:", e);
+    } catch (error) {
+      console.error("Error fetching Anthropic models:", error);
     }
     
-    // 如果API调用失败,使用静态列表
+    // 如果动态获取失败,使用预设模型列表
     return {
       object: "list",
       data: [
         {
           id: "claude-3-opus-20240229",
           object: "model",
-          created: 1708992000, // 2024年2月时间戳
+          created: Math.floor(Date.now() / 1000) - 86400 * 30,
           owned_by: "anthropic"
         },
         {
           id: "claude-3-sonnet-20240229",
           object: "model",
-          created: 1708992000,
+          created: Math.floor(Date.now() / 1000) - 86400 * 30,
           owned_by: "anthropic"
         },
         {
           id: "claude-3-haiku-20240307",
           object: "model",
-          created: 1709769600, // 2024年3月时间戳
+          created: Math.floor(Date.now() / 1000) - 86400 * 30,
           owned_by: "anthropic"
         },
         {
-          id: "claude-3.5-sonnet-20240620",
+          id: "claude-3-5-sonnet-20240620",
           object: "model",
-          created: 1718928000, // 2024年6月近似时间戳
+          created: Math.floor(Date.now() / 1000) - 86400 * 7,
           owned_by: "anthropic"
         }
       ]
     };
   } catch (error) {
-    console.error("Error creating Anthropic models list:", error);
+    console.error("Error in Anthropic models function:", error);
     return { object: "list", data: [] };
   }
 }
@@ -1875,7 +2357,10 @@ function createUpstreamRequest(url, originalRequest, requestBody, apiKey) {
     requestInit.body = JSON.stringify(requestBody);
   }
   
-  return new Request(url, requestInit);
+  // 返回准备好的请求数据，而不是创建一个Request对象
+  // 这样nativeFetch可以直接使用这些数据，而不是尝试解析Request对象
+  requestInit.url = url;
+  return requestInit;
 }
 
 // 创建Gemini API请求
@@ -1921,65 +2406,68 @@ async function createGeminiRequest(originalRequest, requestBody, config) {
     }
   }
 
-  // 如果有system instruction但没有其他内容
-  if (system_instruction && contents.length === 0) {
-    contents.push({ role: "model", parts: [{ text: " " }] });
-  }
-
-  const geminiBody = {
-    contents,
-    system_instruction,
-    safetySettings: [
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
-    ],
-    generationConfig: {
-      stopSequences: requestBody.stop,
-      candidateCount: requestBody.n,
-      maxOutputTokens: requestBody.max_tokens || requestBody.max_completion_tokens,
-      temperature: requestBody.temperature,
-      topP: requestBody.top_p,
-      topK: requestBody.top_k,
-      frequencyPenalty: requestBody.frequency_penalty,
-      presencePenalty: requestBody.presence_penalty
-    }
+  // 配置生成参数
+  const generationConfig = {
+    temperature: requestBody.temperature ?? 0.9,
+    maxOutputTokens: requestBody.max_tokens || 8192,
+    topP: requestBody.top_p ?? 0.95,
+    topK: requestBody.top_k ?? 64,
+    presencePenalty: requestBody.presence_penalty,
+    frequencyPenalty: requestBody.frequency_penalty
   };
 
-  console.log("Gemini请求URL:", url);
-  console.log("Gemini请求体:", JSON.stringify(geminiBody, null, 2));
+  // 准备Gemini请求体
+  const geminiBody = {
+    contents: contents,
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
+    ],
+    generationConfig
+  };
 
-  return new Request(url, {
+  // 如果有系统指令,添加到请求
+  if (system_instruction) {
+    geminiBody.systemInstruction = system_instruction;
+  }
+
+  // 返回请求对象
+  return {
     method: "POST",
     headers: headers,
-    body: JSON.stringify(geminiBody)
-  });
+    body: JSON.stringify(geminiBody),
+    url: url,
+    redirect: "follow"
+  };
 }
 
 // 创建Anthropic API请求
 async function createAnthropicRequest(originalRequest, requestBody, config) {
   const apiKey = getAnthropicApiKey(originalRequest, config);
-  const anthropicBody = convertToAnthropicFormat(requestBody);
-  const headers = new Headers();
   
-  headers.set("Content-Type", "application/json");
-  headers.set("x-api-key", apiKey);
-  headers.set("anthropic-version", "2023-06-01");
-  
-  let endpoint = "/v1/messages";
-  if (requestBody.stream) {
-    anthropicBody.stream = true;
+  const headers = new Headers({
+    "Content-Type": "application/json",
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01"
+  });
+
+  let anthropicUrl = config.anthropicUpstreamUrl;
+  if (anthropicUrl.endsWith('/')) {
+    anthropicUrl = anthropicUrl.slice(0, -1);
   }
+
+  // 转换请求格式为Anthropic格式
+  const anthropicBody = convertToAnthropicFormat(requestBody);
   
-  const requestInit = {
+  return {
     method: "POST",
     headers: headers,
     body: JSON.stringify(anthropicBody),
-    redirect: "follow",
+    url: `${anthropicUrl}/v1/messages`,
+    redirect: "follow"
   };
-  
-  return new Request(`${config.anthropicUpstreamUrl}${endpoint}`, requestInit);
 }
 
 // OpenAI格式转换为Gemini格式
