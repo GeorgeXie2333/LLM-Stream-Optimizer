@@ -1125,6 +1125,17 @@ function serveLoginPage() {
           transition: var(--transition);
           position: relative;
           overflow: hidden;
+          z-index: 1;
+        }
+        
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
+        .btn-login .bi-arrow-repeat {
+          display: inline-block;
+          animation: spin 1.2s linear infinite;
         }
         
         .btn-login:hover {
@@ -1218,6 +1229,11 @@ function serveLoginPage() {
           <span id="alertMessage"></span>
         </div>
         
+        <div id="successAlert" class="alert alert-success" role="alert" style="display: none; background-color: #06d6a0; color: white; font-weight: 500; border: none; animation: slideDown 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);">
+          <i class="bi bi-check-circle-fill me-2"></i>
+          <span id="successMessage">登录成功！正在跳转...</span>
+        </div>
+        
         <form id="loginForm">
           <div class="form-group">
             <label for="password" class="form-label">管理员密码</label>
@@ -1259,6 +1275,12 @@ function serveLoginPage() {
           e.preventDefault();
           const password = document.getElementById('password').value;
           
+          // 获取登录按钮并设置加载状态
+          const loginButton = document.querySelector('.btn-login');
+          const originalButtonContent = loginButton.innerHTML;
+          loginButton.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i>登录中...';
+          loginButton.disabled = true;
+          
           try {
             const response = await fetch('/admin/api/login', {
               method: 'POST',
@@ -1271,7 +1293,14 @@ function serveLoginPage() {
             const data = await response.json();
             
             if (response.ok && data.success) {
-              window.location.href = '/admin/dashboard';
+              // 显示成功弹窗
+              const successAlert = document.getElementById('successAlert');
+              successAlert.style.display = 'block';
+              
+              // 延迟1.5秒后跳转，给用户时间看到成功消息
+              setTimeout(() => {
+                window.location.href = '/admin/dashboard';
+              }, 1500);
             } else {
               const alertElement = document.getElementById('loginAlert');
               const messageElement = document.getElementById('alertMessage');
@@ -1289,6 +1318,10 @@ function serveLoginPage() {
             const messageElement = document.getElementById('alertMessage');
             messageElement.textContent = '登录请求失败，请稍后重试';
             alertElement.style.display = 'block';
+          } finally {
+            // 恢复登录按钮的原始内容和状态
+            loginButton.innerHTML = originalButtonContent;
+            loginButton.disabled = false;
           }
         });
       </script>
@@ -1621,6 +1654,7 @@ function serveDashboardPage() {
         .alert {
           border-radius: 12px;
           padding: 1.25rem 1.5rem;
+          margin-bottom: 2rem;
           border: none;
           display: none;
           animation: slideDown 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
