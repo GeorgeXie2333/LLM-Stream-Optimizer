@@ -2393,16 +2393,24 @@ function createUpstreamRequest(url, originalRequest, requestBody, apiKey) {
     if (requestBody.messages) {
       const processedBody = { ...requestBody };
       
+      // 设置默认的max_tokens值，如果未提供
+      if (processedBody.max_tokens === undefined) {
+        processedBody.max_tokens = 4096; // 使用一个足够大的默认值
+      }
+      
       // 处理消息中的图片内容
       processedBody.messages = requestBody.messages.map(msg => {
-        // 如果消息内容是数组（多模态内容），保持原样
-        // OpenAI API原生支持多模态内容，无需特殊处理
         return msg;
       });
       
       requestInit.body = JSON.stringify(processedBody);
     } else {
-      requestInit.body = JSON.stringify(requestBody);
+      // 对于非聊天完成API，也设置默认max_tokens
+      const processedBody = { ...requestBody };
+      if (processedBody.max_tokens === undefined) {
+        processedBody.max_tokens = 8192;
+      }
+      requestInit.body = JSON.stringify(processedBody);
     }
   }
   
@@ -2690,7 +2698,7 @@ function convertToAnthropicFormat(openAiBody) {
     model: openAiBody.model && openAiBody.model.toString().startsWith("claude") 
       ? openAiBody.model 
       : "claude-3-opus-20240229", // 默认使用Claude 3
-    max_tokens: openAiBody.max_tokens || 1024,
+    max_tokens: openAiBody.max_tokens || 4096,
     temperature: openAiBody.temperature !== undefined ? openAiBody.temperature : 0.7,
     top_p: openAiBody.top_p !== undefined ? openAiBody.top_p : 0.95,
     stream: openAiBody.stream || false,
@@ -3165,7 +3173,7 @@ async function processSSELine(line, writer, encoder, delay, config) {
     const data = line.slice(6);
     
     if (data === "[DONE]") {
-      await writer.write(encoder.encode("n"));
+      await writer.write(encoder.encode("data: [DONE]\n\n"));
       return;
     }
     
