@@ -5,7 +5,6 @@
  * 实现多API密钥负载均衡
  * 智能字符流式输出优化
  * 支持Web管理界面
- * 使用原生Fetch替换Cloudflare Fetch
  */
 
 // KV配置键名
@@ -897,7 +896,7 @@ function serveLoginPage() {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>多功能API代理 - 管理登录</title>
+      <title>Better Stream Optimizer - 管理登录</title>
       <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
       <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -1058,7 +1057,7 @@ function serveLoginPage() {
         <div class="brand-icon">
           <i class="bi bi-hdd-network"></i>
         </div>
-        <h2 class="login-title">多功能API代理管理</h2>
+        <h2 class="login-title">Better Stream Optimizer管理</h2>
         <div id="loginAlert" class="alert alert-danger mb-3" role="alert"></div>
         <form id="loginForm">
           <div class="mb-4">
@@ -1142,7 +1141,7 @@ function serveDashboardPage() {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>多功能API代理 - 管理仪表盘</title>
+      <title>Better Stream Optimizer - 管理仪表盘</title>
       <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
       <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -1418,7 +1417,7 @@ function serveDashboardPage() {
           <div class="header-container">
             <a href="/admin/dashboard" class="dashboard-brand">
               <div class="brand-icon"><i class="bi bi-hdd-network"></i></div>
-              <h1 class="h3 mb-0">多功能API代理管理</h1>
+              <h1 class="h3 mb-0">Better Stream Optimizer管理</h1>
             </a>
             <button id="logoutBtn" class="btn">
               <i class="bi bi-box-arrow-right"></i>退出登录
@@ -1494,7 +1493,7 @@ function serveDashboardPage() {
             <div class="config-card">
               <h5 class="card-title">
                 <i class="bi bi-stars"></i>
-                Anthropic API配置
+                Anthropic格式 API配置
                 <span id="anthropicStatus" class="badge rounded-pill ms-2 status-badge bg-secondary">未启用</span>
               </h5>
               <form id="anthropicForm">
@@ -2399,10 +2398,49 @@ async function createGeminiRequest(originalRequest, requestBody, config) {
         parts: [{ text: msg.content }]
       };
     } else {
-      contents.push({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }]
-      });
+      // 检查消息内容是否为对象数组（多模态内容）
+      if (Array.isArray(msg.content)) {
+        const parts = [];
+        
+        for (const contentItem of msg.content) {
+          if (contentItem.type === 'text') {
+            parts.push({ text: contentItem.text });
+          } else if (contentItem.type === 'image_url') {
+            // 处理图片URL
+            let imageData = contentItem.image_url.url;
+            
+            // 如果是base64格式的图片
+            if (imageData.startsWith('data:image/')) {
+              const base64Data = imageData.split(',')[1];
+              parts.push({
+                inline_data: {
+                  data: base64Data,
+                  mime_type: imageData.split(';')[0].split(':')[1]
+                }
+              });
+            } else {
+              // 如果是普通URL
+              parts.push({ 
+                inline_data: {
+                  data: imageData,
+                  mime_type: "application/octet-stream"
+                }
+              });
+            }
+          }
+        }
+        
+        contents.push({
+          role: msg.role === "assistant" ? "model" : "user",
+          parts: parts
+        });
+      } else {
+        // 处理纯文本消息
+        contents.push({
+          role: msg.role === "assistant" ? "model" : "user",
+          parts: [{ text: msg.content }]
+        });
+      }
     }
   }
 
@@ -2501,14 +2539,68 @@ function convertToGeminiFormat(openAiBody) {
   
   // 处理消息
   if (openAiBody.messages && Array.isArray(openAiBody.messages)) {
-    // 直接将所有消息合并为一个用户消息
-    const allMessages = openAiBody.messages.map(msg => msg.content).join("\n");
+    // 处理每条消息，保留原始结构
+    let currentUserParts = [];
+    let currentRole = null;
     
-    // 确保消息不为空
-    if (allMessages.trim()) {
+    for (const msg of openAiBody.messages) {
+      // 跳过系统消息，因为已在前面处理
+      if (msg.role === "system") continue;
+      
+      const role = msg.role === "assistant" ? "model" : "user";
+      
+      // 如果角色变化，添加前一个消息并重置
+      if (currentRole !== null && currentRole !== role && currentUserParts.length > 0) {
+        geminiBody.contents.push({
+          role: currentRole,
+          parts: currentUserParts
+        });
+        currentUserParts = [];
+      }
+      
+      currentRole = role;
+      
+      // 处理消息内容
+      if (Array.isArray(msg.content)) {
+        // 多模态内容
+        for (const contentItem of msg.content) {
+          if (contentItem.type === 'text') {
+            currentUserParts.push({ text: contentItem.text });
+          } else if (contentItem.type === 'image_url') {
+            // 处理图片URL
+            let imageData = contentItem.image_url.url;
+            
+            // 如果是base64格式的图片
+            if (imageData.startsWith('data:image/')) {
+              const base64Data = imageData.split(',')[1];
+              currentUserParts.push({
+                inline_data: {
+                  data: base64Data,
+                  mime_type: imageData.split(';')[0].split(':')[1]
+                }
+              });
+            } else {
+              // 如果是普通URL
+              currentUserParts.push({ 
+                inline_data: {
+                  data: imageData,
+                  mime_type: "application/octet-stream"
+                }
+              });
+            }
+          }
+        }
+      } else {
+        // 纯文本内容
+        currentUserParts.push({ text: msg.content });
+      }
+    }
+    
+    // 添加最后一组消息
+    if (currentRole !== null && currentUserParts.length > 0) {
       geminiBody.contents.push({
-        role: "user",
-        parts: [{ text: allMessages }]
+        role: currentRole,
+        parts: currentUserParts
       });
     }
   }
