@@ -1,6 +1,7 @@
 /**
  * 多提供商AI API兼容代理
  * 支持OpenAI、Anthropic、Gemini格式的API
+ * 支持OpenAI API多端点接入
  * 自动检测模型类型路由到相应API
  * 实现多API密钥负载均衡
  * 智能字符流式输出优化
