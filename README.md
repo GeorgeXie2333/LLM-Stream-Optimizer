@@ -31,6 +31,8 @@ Based on ☁️Cloudflare Workers!!!
 
 **API多合一**
 - 支持添加OpenAI、Anthropic、Google Gemini格式的API
+- 支持添加多个OpenAI API
+- 统一转为OpenAI格式API
 
 **智能流式输出优化**
 - 将大型响应块分解为逐字符输出
@@ -49,12 +51,11 @@ Based on ☁️Cloudflare Workers!!!
 **剔除 Cloudflare 自带 fetch 的多余请求头**
 - 使用ShadowFetch替代Cloudflare Fetch
 - 确保请求上游API时不会带有Cloudflare添加的其他请求头
+- 支持对单个API设置启用或关闭原生Fetch以适配更多使用情景
 
 
-**支持`/v1/models`路径获取模型列表**
+**支持`/v1/models`路径获取所有API的模型列表**
 
 > Todo List:
-> 
-> 支持同类型多API端点接入
 > 
 > 支持自定义API端点
