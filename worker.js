@@ -23,7 +23,8 @@ const KV_CONFIG_KEYS = {
   MIN_DELAY: "min_delay",
   MAX_DELAY: "max_delay",
   ADAPTIVE_DELAY_FACTOR: "adaptive_delay_factor",
-  CHUNK_BUFFER_SIZE: "chunk_buffer_size"
+  CHUNK_BUFFER_SIZE: "chunk_buffer_size",
+  DISABLE_OPTIMIZATION_MODELS: "disable_optimization_models"
 };
 
 // 默认配置
@@ -654,6 +655,9 @@ async function loadConfigFromKV(env) {
           case "ANTHROPIC_USE_NATIVE_FETCH":
             config.anthropicUseNativeFetch = value === "true";
             break;
+          case "DISABLE_OPTIMIZATION_MODELS":
+            config.disableOptimizationModels = JSON.parse(value);
+            break;
         }
       }
     });
@@ -761,31 +765,25 @@ async function saveConfigToKV(env, config) {
   }
 
   try {
-    // 保存配置到KV
-    const promises = [
+    // 并行保存所有配置值
+    await Promise.all([
       env.CONFIG_KV.put(KV_CONFIG_KEYS.UPSTREAM_URL, config.defaultUpstreamUrl || ""),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.OUTGOING_API_KEY, config.defaultOutgoingApiKey || ""),
+      env.CONFIG_KV.put(KV_CONFIG_KEYS.OPENAI_ENDPOINTS, JSON.stringify(config.openaiEndpoints || [])),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_URL, config.geminiUpstreamUrl || ""),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_API_KEY, config.geminiApiKey || ""),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_USE_NATIVE_FETCH, config.geminiUseNativeFetch !== undefined ? config.geminiUseNativeFetch.toString() : "true"),
+      env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_USE_NATIVE_FETCH, (config.geminiUseNativeFetch !== false).toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_URL, config.anthropicUpstreamUrl || ""),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_API_KEY, config.anthropicApiKey || ""),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_USE_NATIVE_FETCH, config.anthropicUseNativeFetch !== undefined ? config.anthropicUseNativeFetch.toString() : "true"),
+      env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_USE_NATIVE_FETCH, (config.anthropicUseNativeFetch !== false).toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.PROXY_API_KEY, config.proxyApiKey || ""),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.MIN_DELAY, config.minDelay.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.MAX_DELAY, config.maxDelay.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.ADAPTIVE_DELAY_FACTOR, config.adaptiveDelayFactor.toString()),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.CHUNK_BUFFER_SIZE, config.chunkBufferSize.toString())
-    ];
+      env.CONFIG_KV.put(KV_CONFIG_KEYS.CHUNK_BUFFER_SIZE, config.chunkBufferSize.toString()),
+      env.CONFIG_KV.put(KV_CONFIG_KEYS.DISABLE_OPTIMIZATION_MODELS, JSON.stringify(config.disableOptimizationModels || []))
+    ]);
     
-    // 保存OpenAI多端点配置
-    if (config.openaiEndpoints && Array.isArray(config.openaiEndpoints)) {
-      promises.push(
-        env.CONFIG_KV.put(KV_CONFIG_KEYS.OPENAI_ENDPOINTS, JSON.stringify(config.openaiEndpoints))
-      );
-    }
-    
-    await Promise.all(promises);
     return { success: true, message: "配置保存成功" };
   } catch (error) {
     console.error("保存配置到KV时出错:", error);
@@ -986,7 +984,8 @@ async function handleConfigApiRequest(request, env) {
         minDelay: config.minDelay,
         maxDelay: config.maxDelay,
         adaptiveDelayFactor: config.adaptiveDelayFactor,
-        chunkBufferSize: config.chunkBufferSize
+        chunkBufferSize: config.chunkBufferSize,
+        disableOptimizationModels: config.disableOptimizationModels || []
       };
       
       return new Response(JSON.stringify({ success: true, config: safeConfig }), {
@@ -1013,6 +1012,12 @@ async function handleConfigApiRequest(request, env) {
         adaptiveDelayFactor: parseFloat(body.adaptiveDelayFactor) || currentConfig.adaptiveDelayFactor,
         chunkBufferSize: parseInt(body.chunkBufferSize) || currentConfig.chunkBufferSize
       };
+      
+      // 更新禁用流式优化的模型列表
+      if (body.hasOwnProperty('disableOptimizationModels') && Array.isArray(body.disableOptimizationModels)) {
+        newConfig.disableOptimizationModels = body.disableOptimizationModels
+          .filter(model => typeof model === 'string' && model.trim());
+      }
       
       // 仅更新非空API密钥（防止覆盖现有密钥）
       if (body.defaultOutgoingApiKey && !body.defaultOutgoingApiKey.includes('*')) {
@@ -2179,6 +2184,12 @@ function serveDashboardPage() {
                   </div>
                 </div>
                 
+                <div class="mb-4">
+                  <label for="disableOptimizationModels" class="form-label">禁用流式优化的模型</label>
+                  <input type="text" class="form-control" id="disableOptimizationModels" placeholder="gpt-4o,claude-3-opus">
+                  <div class="form-text">指定不需要流式优化处理的模型，多个模型用英文逗号分隔。这些模型的响应将直接传递，不经过字符优化。适用于本身响应块已经很小的模型。</div>
+                </div>
+                
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
                     <i class="bi bi-check-circle"></i>保存配置
@@ -2284,6 +2295,13 @@ function serveDashboardPage() {
               document.getElementById('maxDelay').value = config.maxDelay || 40;
               document.getElementById('adaptiveDelayFactor').value = config.adaptiveDelayFactor || 0.8;
               document.getElementById('chunkBufferSize').value = config.chunkBufferSize || 8;
+              
+              // 设置禁用流式优化的模型列表
+              if (config.disableOptimizationModels && Array.isArray(config.disableOptimizationModels)) {
+                document.getElementById('disableOptimizationModels').value = config.disableOptimizationModels.join(',');
+              } else {
+                document.getElementById('disableOptimizationModels').value = '';
+              }
             } else {
               showAlert('danger', data.message || '加载配置失败');
             }
@@ -2378,7 +2396,10 @@ function serveDashboardPage() {
             minDelay: document.getElementById('minDelay').value,
             maxDelay: document.getElementById('maxDelay').value,
             adaptiveDelayFactor: document.getElementById('adaptiveDelayFactor').value,
-            chunkBufferSize: document.getElementById('chunkBufferSize').value
+            chunkBufferSize: document.getElementById('chunkBufferSize').value,
+            disableOptimizationModels: document.getElementById('disableOptimizationModels').value.split(',')
+              .map(model => model.trim())
+              .filter(model => model) // 过滤空字符串
           };
           saveConfig(formData);
         });
@@ -2520,11 +2541,11 @@ function serveDashboardPage() {
                 '<div class="row g-3">' +
                   '<div class="col-md-6">' +
                     '<label class="form-label">端点名称</label>' +
-                    '<input type="text" class="form-control endpoint-name-' + id + '" placeholder="例如: Azure OpenAI" value="' + (endpoint ? (endpoint.name || '') : '') + '">' +
+                    '<input type="text" class="form-control endpoint-name-' + id + '" placeholder="例如: OpenAI官方" value="' + (endpoint ? (endpoint.name || '') : '') + '">' +
                   '</div>' +
                   '<div class="col-md-6">' +
                     '<label class="form-label">API端点URL</label>' +
-                    '<input type="url" class="form-control endpoint-url-' + id + '" placeholder="https://xxxx.openai.azure.com" value="' + (endpoint ? (endpoint.url || '') : '') + '">' +
+                    '<input type="url" class="form-control endpoint-url-' + id + '" placeholder="https://api.openai.com" value="' + (endpoint ? (endpoint.url || '') : '') + '">' +
                   '</div>' +
                   '<div class="col-md-6">' +
                     '<label class="form-label">API密钥</label>' +
@@ -2534,6 +2555,7 @@ function serveDashboardPage() {
                         '<i class="bi bi-eye"></i>' +
                       '</button>' +
                     '</div>' +
+                    '<div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>' +
                   '</div>' +
                   '<div class="col-md-6">' +
                     '<label class="form-label">支持的模型</label>' +
@@ -2875,6 +2897,25 @@ async function handleRequest(request, config) {
     
     // 处理流式响应
     console.log(`开始处理${apiType}流式响应`);
+    
+    // 如果是流式响应，在此处将我们自定义的模型名称头部转发
+    // 创建新的响应，保留原始响应的主体，但添加自定义头部
+    if (requestBody && requestBody.model) {
+      // 克隆响应头部
+      const newHeaders = new Headers(upstreamResponse.headers);
+      // 添加模型名称头部
+      newHeaders.set('x-model-name', requestBody.model.toString());
+      
+      // 创建新的响应
+      const enhancedResponse = new Response(upstreamResponse.body, {
+        status: upstreamResponse.status,
+        statusText: upstreamResponse.statusText,
+        headers: newHeaders
+      });
+      
+      return handleStreamingResponse(enhancedResponse, apiType, config);
+    }
+    
     return handleStreamingResponse(upstreamResponse, apiType, config);
   } catch (error) {
     console.error("Error handling request:", error);
@@ -3783,6 +3824,96 @@ async function handleStreamingResponse(response, apiType, config) {
   // 创建转换流
   const { readable, writable } = new TransformStream();
   
+  // 获取当前模型名称
+  let currentModel = "unknown";
+  try {
+    // 从我们添加的自定义头部获取模型名称
+    const customModelName = response.headers.get("x-model-name");
+    if (customModelName) {
+      currentModel = customModelName.toLowerCase();
+      console.log(`从自定义头部获取模型名称: ${currentModel}`);
+    }
+    // 如果没有自定义头部，尝试从其他头部获取
+    else {
+      // 从URL路径获取模型信息
+      const urlPath = new URL(response.url).pathname;
+      if (urlPath.includes('completions') || urlPath.includes('chat/completions')) {
+        // 如果在路径中，尝试从路径中提取
+        currentModel = urlPath.split('/').pop() || "unknown";
+      }
+      
+      // 从标准头部获取模型信息
+      const modelHeader = response.headers.get("x-model") || response.headers.get("x-openai-model");
+      if (modelHeader) {
+        currentModel = modelHeader.toLowerCase();
+      }
+    }
+    
+    // 从响应中获取请求ID，用于日志跟踪
+    const reqId = response.headers.get("x-request-id") || "unknown";
+    console.log(`处理流式响应: 模型=${currentModel}, 请求ID=${reqId}`);
+  } catch (e) {
+    console.error("获取模型名称出错:", e);
+  }
+  
+  // 检查是否禁用该模型的流式优化
+  const shouldDisableOptimization = config.disableOptimizationModels && 
+    Array.isArray(config.disableOptimizationModels) &&
+    config.disableOptimizationModels.some(model => {
+      if (!model || typeof model !== 'string') return false;
+      
+      const lowerModel = model.toLowerCase().trim();
+      const lowerCurrentModel = currentModel.toLowerCase().trim();
+      
+      // 注册在日志中，便于调试
+      console.log(`比较模型: ${lowerCurrentModel} 与禁用列表项: ${lowerModel}`);
+      
+      const isMatch = lowerCurrentModel === lowerModel || 
+             lowerCurrentModel.includes(lowerModel) || 
+             lowerModel.includes(lowerCurrentModel);
+             
+      if (isMatch) {
+        console.log(`模型 ${currentModel} 匹配禁用项 ${lowerModel}`);
+      }
+      
+      return isMatch;
+    });
+  
+  // 记录禁用优化状态
+  console.log(`禁用流式优化状态: ${shouldDisableOptimization}, 配置的禁用模型列表:`, 
+    Array.isArray(config.disableOptimizationModels) ? config.disableOptimizationModels : 'undefined');
+  
+  // 如果禁用优化，直接传递原始响应流
+  if (shouldDisableOptimization) {
+    console.log(`模型 ${currentModel} 在禁用流式优化列表中，直接传递原始响应`);
+    
+    // 启动异步处理，直接复制原始流
+    (async () => {
+      const reader = response.body.getReader();
+      const writer = writable.getWriter();
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            await writer.close();
+            break;
+          }
+          await writer.write(value);
+        }
+      } catch (err) {
+        console.error("直接传递流时出错:", err);
+        try { writable.abort(err); } catch (e) {}
+      }
+    })();
+    
+    return new Response(readable, {
+      headers: response.headers
+    });
+  }
+  
+  // 以下是正常的流优化处理...
+  
   // 设置监控变量
   let streamActive = true;
   let lastActivityTime = Date.now();
@@ -4565,6 +4696,12 @@ function isModelsRequest(path) {
 function createUpstreamRequest(url, originalRequest, requestBody, apiKey) {
   // 构建请求头
   const headers = new Headers();
+  
+  // 如果请求体中有模型名称，添加到自定义头部中
+  if (requestBody && requestBody.model) {
+    headers.set('x-model-name', requestBody.model.toString());
+    console.log(`将模型名称 ${requestBody.model} 添加到请求头`);
+  }
   
   // 复制所有原始请求头
   try {
