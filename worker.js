@@ -1,7 +1,6 @@
 /**
  * 多提供商AI API兼容代理
  * 支持OpenAI、Anthropic、Gemini格式的API
- * 支持OpenAI API多端点接入
  * 自动检测模型类型路由到相应API
  * 实现多API密钥负载均衡
  * 智能字符流式输出优化
@@ -2702,32 +2701,114 @@ async function handleRequest(request, config) {
       }
     } else {
       // 默认使用OpenAI API
-      const upstreamUrlInfo = extractUpstreamUrl(request, config);
-      const outgoingApiKey = extractOutgoingApiKey(request, config);
+      let upstreamUrlInfo = extractUpstreamUrl(request, config);
+      let outgoingApiKey = extractOutgoingApiKey(request, config);
       
-      // 模型验证：检查请求的模型是否在允许列表中
-      if (upstreamUrlInfo.restrictedModels && requestBody.model) {
-        const modelName = requestBody.model.toString().toLowerCase();
-        const isModelAllowed = upstreamUrlInfo.restrictedModels.some(
-          m => modelName === m.toLowerCase() || modelName.includes(m.toLowerCase())
-        );
+      // 完全重写模型验证逻辑
+      if (requestBody.model) {
+        const modelName = requestBody.model.toString().toLowerCase().trim();
+        console.log(`模型请求: ${modelName}, 选择的端点: ${upstreamUrlInfo.url}`);
         
-        // 如果端点有指定模型列表，且请求的模型不在列表中，则拒绝请求
-        if (!isModelAllowed) {
-          return new Response(JSON.stringify({
-            error: {
-              message: `模型 ${requestBody.model} 不在此端点的支持列表中`,
-              type: "invalid_request_error",
-              param: "model",
-              code: 400
+        // 不进行模型验证的情况:
+        // 1. 端点没有设置restrictedModels
+        // 2. 端点的restrictedModels为空数组
+        if (!upstreamUrlInfo.restrictedModels || upstreamUrlInfo.restrictedModels.length === 0) {
+          console.log(`选择的端点没有设置限制模型列表，允许所有模型`);
+        } 
+        // 进行模型验证
+        else {
+          console.log(`正在验证模型 ${modelName} 是否在允许列表中:`, upstreamUrlInfo.restrictedModels);
+          
+          // 首先检查完全匹配
+          let exactMatch = upstreamUrlInfo.restrictedModels.some(m => 
+            m.toLowerCase().trim() === modelName
+          );
+          
+          if (exactMatch) {
+            console.log(`模型 ${modelName} 完全匹配成功，允许请求`);
+          } else {
+            // 然后检查部分匹配
+            const partialMatch = upstreamUrlInfo.restrictedModels.some(m => {
+              const lowerM = m.toLowerCase().trim();
+              return modelName.includes(lowerM) || lowerM.includes(modelName);
+            });
+            
+            if (partialMatch) {
+              console.log(`模型 ${modelName} 部分匹配成功，允许请求`);
+            } else {
+              console.log(`模型 ${modelName} 匹配失败，拒绝请求`);
+              
+              // 尝试在其他端点中查找支持该模型的端点
+              console.log(`正在检查其他端点是否支持模型 ${modelName}...`);
+              
+              // 查找可能支持该模型的其他端点
+              const otherEndpoints = config.openaiEndpoints.filter(endpoint => 
+                endpoint.url && 
+                endpoint.url !== upstreamUrlInfo.url && 
+                endpoint.models && 
+                endpoint.models.length > 0
+              );
+              
+              const supportingEndpoints = [];
+              const supportingEndpointDetails = [];
+              for (const endpoint of otherEndpoints) {
+                const supported = endpoint.models.some(m => {
+                  const lowerM = m.toLowerCase().trim();
+                  return modelName === lowerM || 
+                        modelName.includes(lowerM) || 
+                        lowerM.includes(modelName);
+                });
+                
+                if (supported) {
+                  supportingEndpoints.push(endpoint.name);
+                  supportingEndpointDetails.push(endpoint);
+                }
+              }
+              
+              // 如果找到支持该模型的其他端点，自动重定向到第一个支持的端点
+              if (supportingEndpointDetails.length > 0) {
+                console.log(`找到支持模型 ${modelName} 的其他端点，自动重定向到: ${supportingEndpointDetails[0].name}`);
+                
+                // 更新上游URL信息，使用新端点
+                upstreamUrlInfo = { 
+                  url: supportingEndpointDetails[0].url, 
+                  useNativeFetch: supportingEndpointDetails[0].useNativeFetch !== undefined ? supportingEndpointDetails[0].useNativeFetch : true,
+                  restrictedModels: supportingEndpointDetails[0].models
+                };
+                
+                // 可能还需要更新API密钥
+                if (supportingEndpointDetails[0].apiKey) {
+                  const keys = supportingEndpointDetails[0].apiKey.split(',').map(k => k.trim()).filter(Boolean);
+                  if (keys.length > 0) {
+                    outgoingApiKey = keys[Math.floor(Math.random() * keys.length)];
+                  }
+                }
+                
+                console.log(`已自动重定向到端点 ${supportingEndpointDetails[0].name}`);
+              } else {
+                // 如果没有找到支持的端点，返回错误
+                let errorMessage = `模型 ${requestBody.model} 不在此端点的支持列表中`;
+                if (supportingEndpoints.length > 0) {
+                  errorMessage += `。该模型可能在以下端点支持: ${supportingEndpoints.join(', ')}`;
+                }
+                
+                return new Response(JSON.stringify({
+                  error: {
+                    message: errorMessage,
+                    type: "invalid_request_error",
+                    param: "model",
+                    code: 400
+                  }
+                }), {
+                  status: 400,
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                  }
+                });
+              }
             }
-          }), {
-            status: 400,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            }
-          });
+          }
         }
       }
       
@@ -2807,15 +2888,27 @@ function determineApiType(modelName, config) {
   
   modelName = modelName.toString().toLowerCase();
   
-  // 检查模型前缀
-  for (const [prefix, apiType] of Object.entries(MODEL_PREFIX_MAP)) {
-    if (modelName.startsWith(prefix)) {
-      // 只返回已启用的API类型
-      if (apiType === 'anthropic' && config.anthropicEnabled) return 'anthropic';
-      if (apiType === 'gemini' && config.geminiEnabled) return 'gemini';
+  // 首先检查Anthropic API
+  if (config.anthropicEnabled) {
+    // 只有在Anthropic API启用时才检查匹配Anthropic的前缀
+    for (const [prefix, apiType] of Object.entries(MODEL_PREFIX_MAP)) {
+      if (apiType === 'anthropic' && modelName.startsWith(prefix)) {
+        return 'anthropic';
+      }
     }
   }
   
+  // 然后检查Gemini API
+  if (config.geminiEnabled) {
+    // 只有在Gemini API启用时才检查匹配Gemini的前缀
+    for (const [prefix, apiType] of Object.entries(MODEL_PREFIX_MAP)) {
+      if (apiType === 'gemini' && modelName.startsWith(prefix)) {
+        return 'gemini';
+      }
+    }
+  }
+  
+  // 如果没有匹配到任何已启用的API，或者对应的API未启用，默认返回openai
   return 'openai';
 }
 
@@ -3181,7 +3274,7 @@ function extractOutgoingApiKey(request, config) {
       
       // 如果成功获取请求体并包含模型名称
       if (requestBody && requestBody.model) {
-        const modelName = requestBody.model.toString().toLowerCase();
+        const modelName = requestBody.model.toString().toLowerCase().trim();
         
         // 遍历所有端点，查找支持该模型的端点
         for (const endpoint of config.openaiEndpoints) {
@@ -3264,42 +3357,91 @@ function extractUpstreamUrl(request, config) {
       
       // 如果成功获取请求体并包含模型名称
       if (requestBody && requestBody.model) {
-        const modelName = requestBody.model.toString().toLowerCase();
+        const modelName = requestBody.model.toString().toLowerCase().trim();
+        console.log(`处理模型请求: ${modelName}, 开始寻找匹配端点...`);
         
-        // 第一轮：尝试寻找有明确指定模型列表并匹配当前模型的端点
-        // 这确保了优先使用专门为请求模型配置的端点
-        const specificEndpoints = config.openaiEndpoints.filter(endpoint => 
-          endpoint.url && endpoint.models && endpoint.models.length > 0
-        );
+        // 输出所有端点信息以便调试
+        console.log("所有可用端点:", config.openaiEndpoints.map(ep => ({
+          name: ep.name,
+          url: ep.url,
+          models: ep.models && ep.models.length > 0 ? ep.models : ["无限制"]
+        })));
         
-        for (const endpoint of specificEndpoints) {
-          if (endpoint.models.some(m => modelName === m.toLowerCase() || modelName.includes(m.toLowerCase()))) {
-            console.log(`模型 ${modelName} 匹配到专用端点: ${endpoint.name}`);
-            return { 
-              url: endpoint.url, 
-              useNativeFetch: endpoint.useNativeFetch !== undefined ? endpoint.useNativeFetch : true,
-              restrictedModels: endpoint.models
-            };
+        // 先收集所有匹配情况，然后按优先级选择
+        const matchResults = [];
+        
+        // 检查每个端点
+        for (let i = 0; i < config.openaiEndpoints.length; i++) {
+          const endpoint = config.openaiEndpoints[i];
+          if (!endpoint.url) continue;
+          
+          // 端点没有模型限制 - 通用端点
+          if (!endpoint.models || endpoint.models.length === 0) {
+            matchResults.push({
+              endpoint: endpoint,
+              matchType: "generic",
+              index: i,
+              priority: 3 // 最低优先级
+            });
+            continue;
+          }
+          
+          // 检查完全匹配
+          const exactMatchModel = endpoint.models.find(m => 
+            m.toLowerCase().trim() === modelName
+          );
+          
+          if (exactMatchModel) {
+            matchResults.push({
+              endpoint: endpoint,
+              matchType: "exact",
+              matchedModel: exactMatchModel,
+              index: i,
+              priority: 1 // 最高优先级
+            });
+            continue;
+          }
+          
+          // 检查部分匹配
+          const partialMatchModel = endpoint.models.find(m => {
+            const lowerM = m.toLowerCase().trim();
+            return modelName.includes(lowerM) || lowerM.includes(modelName);
+          });
+          
+          if (partialMatchModel) {
+            matchResults.push({
+              endpoint: endpoint,
+              matchType: "partial",
+              matchedModel: partialMatchModel,
+              index: i,
+              priority: 2 // 中等优先级
+            });
           }
         }
         
-        // 第二轮：尝试寻找未指定模型列表的通用端点
-        // 只有在没有找到专用端点时才使用通用端点
-        const genericEndpoints = config.openaiEndpoints.filter(endpoint => 
-          endpoint.url && (!endpoint.models || endpoint.models.length === 0)
-        );
+        // 根据优先级排序：1.完全匹配 2.部分匹配 3.通用端点
+        matchResults.sort((a, b) => a.priority - b.priority);
         
-        if (genericEndpoints.length > 0) {
-          console.log(`模型 ${modelName} 未找到专用端点，使用通用端点: ${genericEndpoints[0].name}`);
+        // 输出匹配结果
+        console.log("端点匹配结果:", matchResults.map(r => ({
+          name: r.endpoint.name,
+          matchType: r.matchType,
+          matchedModel: r.matchedModel || "N/A",
+          priority: r.priority
+        })));
+        
+        // 选择最佳匹配
+        if (matchResults.length > 0) {
+          const bestMatch = matchResults[0];
+          console.log(`为模型 ${modelName} 选择端点: ${bestMatch.endpoint.name} (匹配类型: ${bestMatch.matchType})`);
           return { 
-            url: genericEndpoints[0].url, 
-            useNativeFetch: genericEndpoints[0].useNativeFetch !== undefined ? genericEndpoints[0].useNativeFetch : true,
-            restrictedModels: null
+            url: bestMatch.endpoint.url, 
+            useNativeFetch: bestMatch.endpoint.useNativeFetch !== undefined ? bestMatch.endpoint.useNativeFetch : true,
+            restrictedModels: bestMatch.endpoint.models
           };
         }
         
-        // 如果既没有找到专用端点也没有通用端点，使用第一个有效端点
-        console.log(`模型 ${modelName} 未找到匹配端点，使用第一个有效端点`);
+        console.log(`未找到匹配端点，使用第一个有效端点`);
       }
     } catch (error) {
       console.error("提取模型信息以确定上游URL时出错:", error);
