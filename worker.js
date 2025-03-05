@@ -11,10 +11,13 @@
 const KV_CONFIG_KEYS = {
   UPSTREAM_URL: "upstream_url",
   OUTGOING_API_KEY: "outgoing_api_key",
+  OPENAI_ENDPOINTS: "openai_endpoints", // 新增: 存储多个OpenAI端点的配置
   GEMINI_URL: "gemini_url",
   GEMINI_API_KEY: "gemini_api_key",
+  GEMINI_USE_NATIVE_FETCH: "gemini_use_native_fetch",
   ANTHROPIC_URL: "anthropic_url",
   ANTHROPIC_API_KEY: "anthropic_api_key",
+  ANTHROPIC_USE_NATIVE_FETCH: "anthropic_use_native_fetch",
   PROXY_API_KEY: "proxy_api_key",
   // 字符延迟参数
   MIN_DELAY: "min_delay",
@@ -30,12 +33,21 @@ const DEFAULT_CONFIG = {
   maxDelay: 40,             // 最大延迟(毫秒)
   adaptiveDelayFactor: 0.8, // 自适应延迟因子
   chunkBufferSize: 8,       // 计算平均响应大小的缓冲区大小
+  
+  // OpenAI多端点配置
+  openaiEndpoints: [],      // 多个OpenAI端点的配置列表
 };
 
 // 预定义模型前缀映射到API类型
 const MODEL_PREFIX_MAP = {
   'claude': 'anthropic',
-  'gemini': 'gemini'
+  'gemini': 'gemini',
+  'gemini-': 'gemini',  // 兼容以gemini-开头的模型名称
+  'gemini-pro': 'gemini',
+  'gemini-flash': 'gemini',
+  'gemini-1.0': 'gemini',
+  'gemini-1.5': 'gemini',
+  'gemini-2.0': 'gemini'
 };
 
 // 导入Cloudflare Sockets API
@@ -338,9 +350,27 @@ async function nativeFetch(req, dstUrl) {
   if (req instanceof Request) {
     // 清理请求头
     const cleanedHeaders = new Headers();
-    for (const [k, v] of req.headers) {
-      if (!HEADER_FILTER_RE.test(k)) {
-        cleanedHeaders.set(k, v);
+    
+    // 确保req.headers是可迭代的Headers对象
+    try {
+      for (const [k, v] of req.headers) {
+        if (!HEADER_FILTER_RE.test(k)) {
+          cleanedHeaders.set(k, v);
+        }
+      }
+    } catch (headerError) {
+      console.error("处理请求头时出错:", headerError);
+      console.log("尝试替代方法处理headers");
+      
+      // 如果标准迭代失败，尝试其他方法获取所有头
+      const headerNames = req.headers.keys ? Array.from(req.headers.keys()) : [];
+      for (const k of headerNames) {
+        if (!HEADER_FILTER_RE.test(k)) {
+          const v = req.headers.get(k);
+          if (v !== null && v !== undefined) {
+            cleanedHeaders.set(k, v);
+          }
+        }
       }
     }
     
@@ -374,9 +404,7 @@ async function nativeFetch(req, dstUrl) {
       // 组装握手请求数据
       const handshakeReq =
         `GET ${targetUrl.pathname}${targetUrl.search} HTTP/1.1\r\n` +
-        Array.from(cleanedHeaders.entries())
-          .map(([k, v]) => `${k}: ${v}`)
-          .join('\r\n') +
+        safeHeadersToString(cleanedHeaders) +
         '\r\n\r\n';
 
       console.log("发送WebSocket握手请求", handshakeReq);
@@ -442,9 +470,7 @@ async function nativeFetch(req, dstUrl) {
       // 构建请求行和头部
       const requestLine =
         `${req.method} ${targetUrl.pathname}${targetUrl.search} HTTP/1.1\r\n` +
-        Array.from(cleanedHeaders.entries())
-          .map(([k, v]) => `${k}: ${v}`)
-          .join("\r\n") +
+        safeHeadersToString(cleanedHeaders) +
         "\r\n\r\n";
         
       console.log("发送请求", requestLine);
@@ -468,10 +494,24 @@ async function nativeFetch(req, dstUrl) {
     
     // 清理请求头
     const cleanedHeaders = new Headers();
-    for (const [k, v] of headers.entries()) {
-      if (!HEADER_FILTER_RE.test(k)) {
-        cleanedHeaders.set(k, v);
+    
+    // 处理不同类型的headers对象
+    if (headers instanceof Headers) {
+      // 标准Headers对象
+      for (const [k, v] of headers.entries()) {
+        if (!HEADER_FILTER_RE.test(k)) {
+          cleanedHeaders.set(k, v);
+        }
       }
+    } else if (typeof headers === 'object') {
+      // 普通对象，例如 {key: value}
+      for (const [k, v] of Object.entries(headers)) {
+        if (!HEADER_FILTER_RE.test(k)) {
+          cleanedHeaders.set(k, v);
+        }
+      }
+    } else {
+      console.warn("不支持的headers类型:", typeof headers);
     }
     
     // 标准HTTP请求处理
@@ -503,9 +543,7 @@ async function nativeFetch(req, dstUrl) {
     // 构建请求行和头部
     const requestLine =
       `${method} ${targetUrl.pathname}${targetUrl.search} HTTP/1.1\r\n` +
-      Array.from(cleanedHeaders.entries())
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("\r\n") +
+      safeHeadersToString(cleanedHeaders) +
       "\r\n\r\n";
       
     console.log("发送请求", requestLine);
@@ -583,6 +621,16 @@ async function loadConfigFromKV(env) {
             config.defaultOutgoingApiKey = value;
             config.defaultEnabled = !!value;
             break;
+          case "OPENAI_ENDPOINTS":
+            try {
+              const endpoints = JSON.parse(value);
+              if (Array.isArray(endpoints)) {
+                config.openaiEndpoints = endpoints;
+              }
+            } catch (e) {
+              console.error("解析OpenAI端点配置出错:", e);
+            }
+            break;
           case "GEMINI_URL":
             config.geminiUpstreamUrl = value;
             break;
@@ -600,6 +648,12 @@ async function loadConfigFromKV(env) {
           case "PROXY_API_KEY":
             config.proxyApiKey = value;
             break;
+          case "GEMINI_USE_NATIVE_FETCH":
+            config.geminiUseNativeFetch = value === "true";
+            break;
+          case "ANTHROPIC_USE_NATIVE_FETCH":
+            config.anthropicUseNativeFetch = value === "true";
+            break;
         }
       }
     });
@@ -610,6 +664,28 @@ async function loadConfigFromKV(env) {
     // 如果KV中没有某些配置，则使用环境变量作为后备
     config.defaultUpstreamUrl = config.defaultUpstreamUrl || env.UPSTREAM_URL || "https://api.openai.com";
     config.defaultOutgoingApiKey = config.defaultOutgoingApiKey || env.OUTGOING_API_KEY || "";
+    
+    // 如果环境变量中有定义多个OpenAI端点，则加载它们
+    if (env.OPENAI_ENDPOINTS) {
+      try {
+        const envEndpoints = JSON.parse(env.OPENAI_ENDPOINTS);
+        if (Array.isArray(envEndpoints) && envEndpoints.length > 0) {
+          config.openaiEndpoints = envEndpoints;
+        }
+      } catch (e) {
+        console.error("解析环境变量中的OpenAI端点配置出错:", e);
+      }
+    }
+    
+    // 如果没有配置任何多端点，但配置了默认端点和API密钥，则添加默认端点
+    if (config.openaiEndpoints.length === 0 && config.defaultUpstreamUrl && config.defaultOutgoingApiKey) {
+      config.openaiEndpoints.push({
+        name: "默认",
+        url: config.defaultUpstreamUrl,
+        apiKey: config.defaultOutgoingApiKey,
+        models: [] // 空数组表示支持所有模型
+      });
+    }
     
     config.geminiUpstreamUrl = config.geminiUpstreamUrl || env.GEMINI_URL || "https://generativelanguage.googleapis.com";
     config.geminiApiKey = config.geminiApiKey || env.GEMINI_API_KEY || "";
@@ -631,7 +707,7 @@ async function loadConfigFromKV(env) {
 
 // 使用环境变量获取默认配置
 function getDefaultConfig(env) {
-  return {
+  const config = {
     ...DEFAULT_CONFIG,
     // OpenAI配置
     defaultUpstreamUrl: env.UPSTREAM_URL || "https://api.openai.com",
@@ -641,15 +717,41 @@ function getDefaultConfig(env) {
     geminiEnabled: !!env.GEMINI_API_KEY,
     geminiUpstreamUrl: env.GEMINI_URL || "https://generativelanguage.googleapis.com",
     geminiApiKey: env.GEMINI_API_KEY || "",
+    geminiUseNativeFetch: env.GEMINI_USE_NATIVE_FETCH !== "false", // 默认开启
     
     // Anthropic配置
     anthropicEnabled: !!env.ANTHROPIC_API_KEY,
     anthropicUpstreamUrl: env.ANTHROPIC_URL || "https://api.anthropic.com",
     anthropicApiKey: env.ANTHROPIC_API_KEY || "",
+    anthropicUseNativeFetch: env.ANTHROPIC_USE_NATIVE_FETCH !== "false", // 默认开启
     
     // 代理控制配置
     proxyApiKey: env.PROXY_API_KEY || "",  // 代理服务自身的API密钥
   };
+  
+  // 尝试加载多端点配置
+  if (env.OPENAI_ENDPOINTS) {
+    try {
+      const endpoints = JSON.parse(env.OPENAI_ENDPOINTS);
+      if (Array.isArray(endpoints)) {
+        config.openaiEndpoints = endpoints;
+      }
+    } catch (e) {
+      console.error("解析环境变量中的OpenAI端点配置出错:", e);
+    }
+  }
+  
+  // 如果没有多端点配置，但有默认端点，则创建一个默认端点配置
+  if ((!config.openaiEndpoints || config.openaiEndpoints.length === 0) && config.defaultOutgoingApiKey) {
+    config.openaiEndpoints = [{
+      name: "默认",
+      url: config.defaultUpstreamUrl,
+      apiKey: config.defaultOutgoingApiKey,
+      models: [] // 空数组表示支持所有模型
+    }];
+  }
+  
+  return config;
 }
 
 // 将配置保存到KV存储
@@ -665,14 +767,23 @@ async function saveConfigToKV(env, config) {
       env.CONFIG_KV.put(KV_CONFIG_KEYS.OUTGOING_API_KEY, config.defaultOutgoingApiKey || ""),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_URL, config.geminiUpstreamUrl || ""),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_API_KEY, config.geminiApiKey || ""),
+      env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_USE_NATIVE_FETCH, config.geminiUseNativeFetch !== undefined ? config.geminiUseNativeFetch.toString() : "true"),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_URL, config.anthropicUpstreamUrl || ""),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_API_KEY, config.anthropicApiKey || ""),
+      env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_USE_NATIVE_FETCH, config.anthropicUseNativeFetch !== undefined ? config.anthropicUseNativeFetch.toString() : "true"),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.PROXY_API_KEY, config.proxyApiKey || ""),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.MIN_DELAY, config.minDelay.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.MAX_DELAY, config.maxDelay.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.ADAPTIVE_DELAY_FACTOR, config.adaptiveDelayFactor.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.CHUNK_BUFFER_SIZE, config.chunkBufferSize.toString())
     ];
+    
+    // 保存OpenAI多端点配置
+    if (config.openaiEndpoints && Array.isArray(config.openaiEndpoints)) {
+      promises.push(
+        env.CONFIG_KV.put(KV_CONFIG_KEYS.OPENAI_ENDPOINTS, JSON.stringify(config.openaiEndpoints))
+      );
+    }
     
     await Promise.all(promises);
     return { success: true, message: "配置保存成功" };
@@ -858,6 +969,13 @@ async function handleConfigApiRequest(request, env) {
         defaultUpstreamUrl: config.defaultUpstreamUrl,
         defaultOutgoingApiKey: maskAPIKey(config.defaultOutgoingApiKey),
         defaultEnabled: config.defaultEnabled,
+        openaiEndpoints: config.openaiEndpoints ? config.openaiEndpoints.map(endpoint => ({
+          name: endpoint.name,
+          url: endpoint.url,
+          apiKey: maskAPIKey(endpoint.apiKey),
+          models: endpoint.models,
+          useNativeFetch: endpoint.useNativeFetch !== undefined ? endpoint.useNativeFetch : true
+        })) : [],
         geminiEnabled: config.geminiEnabled,
         geminiUpstreamUrl: config.geminiUpstreamUrl,
         geminiApiKey: maskAPIKey(config.geminiApiKey),
@@ -888,6 +1006,8 @@ async function handleConfigApiRequest(request, env) {
         defaultUpstreamUrl: body.defaultUpstreamUrl || currentConfig.defaultUpstreamUrl,
         geminiUpstreamUrl: body.geminiUpstreamUrl || currentConfig.geminiUpstreamUrl,
         anthropicUpstreamUrl: body.anthropicUpstreamUrl || currentConfig.anthropicUpstreamUrl,
+        geminiUseNativeFetch: body.hasOwnProperty('geminiUseNativeFetch') ? !!body.geminiUseNativeFetch : currentConfig.geminiUseNativeFetch,
+        anthropicUseNativeFetch: body.hasOwnProperty('anthropicUseNativeFetch') ? !!body.anthropicUseNativeFetch : currentConfig.anthropicUseNativeFetch,
         minDelay: parseInt(body.minDelay) || currentConfig.minDelay,
         maxDelay: parseInt(body.maxDelay) || currentConfig.maxDelay,
         adaptiveDelayFactor: parseFloat(body.adaptiveDelayFactor) || currentConfig.adaptiveDelayFactor,
@@ -901,6 +1021,30 @@ async function handleConfigApiRequest(request, env) {
       } else if (body.hasOwnProperty('defaultOutgoingApiKey') && body.defaultOutgoingApiKey === '') {
         newConfig.defaultOutgoingApiKey = '';
         newConfig.defaultEnabled = false;
+      }
+      
+      // 处理多端点配置
+      if (body.hasOwnProperty('openaiEndpoints') && Array.isArray(body.openaiEndpoints)) {
+        // 处理每个端点的API密钥，保留非屏蔽的密钥
+        const endpoints = body.openaiEndpoints.map(endpoint => {
+          // 如果API密钥被屏蔽了，尝试从现有配置中找到对应的端点
+          if (endpoint.apiKey && endpoint.apiKey.includes('*')) {
+            // 尝试在现有配置中找到匹配的端点
+            const existingEndpoint = currentConfig.openaiEndpoints?.find(e => 
+              e.name === endpoint.name && e.url === endpoint.url);
+            
+            // 如果找到匹配的端点，使用现有的API密钥
+            if (existingEndpoint) {
+              return {
+                ...endpoint,
+                apiKey: existingEndpoint.apiKey
+              };
+            }
+          }
+          return endpoint;
+        });
+        
+        newConfig.openaiEndpoints = endpoints.filter(e => e.url && e.apiKey);
       }
       
       if (body.geminiApiKey && !body.geminiApiKey.includes('*')) {
@@ -1864,23 +2008,28 @@ function serveDashboardPage() {
               </h5>
               <form id="openaiForm">
                 <div class="mb-4">
-                  <label for="defaultUpstreamUrl" class="form-label">API端点URL</label>
-                  <div class="position-relative">
-                    <i class="bi bi-link-45deg url-icon"></i>
-                    <input type="url" class="form-control has-url-icon" id="defaultUpstreamUrl" placeholder="https://api.openai.com">
-                  </div>
-                  <div class="form-text">OpenAI格式 API端点URL，默认为官方API</div>
+                  <p class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    本配置已改为完全使用多端点配置模式，请在下方添加您的API端点。
+                  </p>
                 </div>
-                <div class="mb-4">
-                  <label for="defaultOutgoingApiKey" class="form-label">API密钥</label>
-                  <div class="api-key-wrapper">
-                    <input type="password" class="form-control" id="defaultOutgoingApiKey" placeholder="sk-...">
-                    <button type="button" class="api-key-toggle" data-target="defaultOutgoingApiKey">
-                      <i class="bi bi-eye"></i>
+                
+                <!-- 多端点配置 -->
+                <div class="mt-3 mb-4">
+                  <h5 class="card-subtitle mb-3">
+                    <i class="bi bi-diagram-3"></i>
+                    多端点配置
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="addOpenAIEndpoint">
+                      <i class="bi bi-plus-circle"></i> 添加端点
                     </button>
+                  </h5>
+                  <div class="form-text mb-3">配置多个OpenAI格式API端点，可以根据模型名称自动路由到不同端点(需设置模型名称)</div>
+                  
+                  <div id="openaiEndpointsContainer">
+                    <!-- 端点列表将通过JS动态生成 -->
                   </div>
-                  <div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>
                 </div>
+                
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
                     <i class="bi bi-check-circle"></i>保存配置
@@ -1917,6 +2066,13 @@ function serveDashboardPage() {
                   </div>
                   <div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>
                 </div>
+                <div class="mb-4">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="anthropicUseNativeFetch" checked>
+                    <label class="form-check-label" for="anthropicUseNativeFetch">使用原生Fetch</label>
+                  </div>
+                  <div class="form-text">启用可增强安全性，但会无法访问使用Cloudflare CDN的API</div>
+                </div>
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
                     <i class="bi bi-check-circle"></i>保存配置
@@ -1952,6 +2108,13 @@ function serveDashboardPage() {
                     </button>
                   </div>
                   <div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>
+                </div>
+                <div class="mb-4">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="geminiUseNativeFetch" checked>
+                    <label class="form-check-label" for="geminiUseNativeFetch">使用原生Fetch</label>
+                  </div>
+                  <div class="form-text">启用可增强安全性，但会无法访问使用Cloudflare CDN的API</div>
                 </div>
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
@@ -2057,12 +2220,15 @@ function serveDashboardPage() {
               const config = data.config;
               
               // OpenAI配置
-              document.getElementById('defaultUpstreamUrl').value = config.defaultUpstreamUrl || '';
-              document.getElementById('defaultOutgoingApiKey').value = config.defaultOutgoingApiKey || '';
+              // 已移除设置默认端点的代码行
+              
+              // 加载多端点配置
+              var openaiEndpoints = config.openaiEndpoints || [];
+              loadOpenAIEndpoints(openaiEndpoints);
               
               // 更新OpenAI状态徽章
-              const openaiStatus = document.getElementById('openaiStatus');
-              if (config.defaultEnabled) {
+              var openaiStatus = document.getElementById('openaiStatus');
+              if (config.openaiEndpoints && config.openaiEndpoints.length > 0) {
                 openaiStatus.textContent = '已启用';
                 openaiStatus.classList.remove('bg-secondary');
                 openaiStatus.classList.add('bg-success');
@@ -2076,7 +2242,10 @@ function serveDashboardPage() {
               document.getElementById('anthropicUpstreamUrl').value = config.anthropicUpstreamUrl || '';
               document.getElementById('anthropicApiKey').value = config.anthropicApiKey || '';
               
-              // 更新Anthropic状态徽章
+              // 设置原生Fetch选项
+              document.getElementById('anthropicUseNativeFetch').checked = config.anthropicUseNativeFetch !== false;
+              
+              // 更新状态标签
               const anthropicStatus = document.getElementById('anthropicStatus');
               if (config.anthropicEnabled) {
                 anthropicStatus.textContent = '已启用';
@@ -2091,6 +2260,9 @@ function serveDashboardPage() {
               // Gemini配置
               document.getElementById('geminiUpstreamUrl').value = config.geminiUpstreamUrl || '';
               document.getElementById('geminiApiKey').value = config.geminiApiKey || '';
+              
+              // 设置原生Fetch选项
+              document.getElementById('geminiUseNativeFetch').checked = config.geminiUseNativeFetch !== false;
               
               // 更新Gemini状态徽章
               const geminiStatus = document.getElementById('geminiStatus');
@@ -2163,9 +2335,11 @@ function serveDashboardPage() {
         // 表单提交处理
         document.getElementById('openaiForm').addEventListener('submit', function(e) {
           e.preventDefault();
-          const formData = {
-            defaultUpstreamUrl: document.getElementById('defaultUpstreamUrl').value,
-            defaultOutgoingApiKey: document.getElementById('defaultOutgoingApiKey').value
+          var formData = {
+            // 移除默认端点设置
+            defaultUpstreamUrl: '', // 设置为空字符串以移除默认端点URL
+            defaultOutgoingApiKey: '', // 设置为空字符串以禁用默认API密钥
+            openaiEndpoints: getOpenAIEndpointsConfig()
           };
           saveConfig(formData);
         });
@@ -2174,7 +2348,8 @@ function serveDashboardPage() {
           e.preventDefault();
           const formData = {
             anthropicUpstreamUrl: document.getElementById('anthropicUpstreamUrl').value,
-            anthropicApiKey: document.getElementById('anthropicApiKey').value
+            anthropicApiKey: document.getElementById('anthropicApiKey').value,
+            anthropicUseNativeFetch: document.getElementById('anthropicUseNativeFetch').checked
           };
           saveConfig(formData);
         });
@@ -2183,7 +2358,8 @@ function serveDashboardPage() {
           e.preventDefault();
           const formData = {
             geminiUpstreamUrl: document.getElementById('geminiUpstreamUrl').value,
-            geminiApiKey: document.getElementById('geminiApiKey').value
+            geminiApiKey: document.getElementById('geminiApiKey').value,
+            geminiUseNativeFetch: document.getElementById('geminiUseNativeFetch').checked
           };
           saveConfig(formData);
         });
@@ -2259,6 +2435,157 @@ function serveDashboardPage() {
         
         // 页面加载时获取配置
         window.addEventListener('load', loadConfig);
+        
+        // 获取OpenAI多端点配置
+        function getOpenAIEndpointsConfig() {
+          var endpoints = [];
+          var endpointElements = document.querySelectorAll('.openai-endpoint');
+          
+          for (var i = 0; i < endpointElements.length; i++) {
+            var element = endpointElements[i];
+            var id = element.dataset.id;
+            var nameInput = element.querySelector('.endpoint-name-' + id);
+            var urlInput = element.querySelector('.endpoint-url-' + id);
+            var apiKeyInput = element.querySelector('.endpoint-apikey-' + id);
+            var modelsInput = element.querySelector('.endpoint-models-' + id);
+            var nativeFetchInput = element.querySelector('.endpoint-native-fetch-' + id);
+            
+            if (!nameInput || !urlInput || !apiKeyInput || !modelsInput) continue;
+            
+            var name = nameInput.value;
+            var url = urlInput.value;
+            var apiKey = apiKeyInput.value;
+            var modelsText = modelsInput.value;
+            var useNativeFetch = nativeFetchInput ? nativeFetchInput.checked : false;
+            
+            // 解析模型列表
+            var modelsList = modelsText.split(',');
+            var models = [];
+            
+            for (var j = 0; j < modelsList.length; j++) {
+              var model = modelsList[j].trim();
+              if (model.length > 0) {
+                models.push(model);
+              }
+            }
+            
+            if (url && apiKey) {
+              endpoints.push({
+                name: name,
+                url: url,
+                apiKey: apiKey,
+                models: models,
+                useNativeFetch: useNativeFetch
+              });
+            }
+          }
+          
+          return endpoints;
+        }
+        
+        // 加载OpenAI多端点配置
+        function loadOpenAIEndpoints(endpoints) {
+          var container = document.getElementById('openaiEndpointsContainer');
+          container.innerHTML = '';
+          
+          if (!endpoints || endpoints.length === 0) {
+            // 如果没有端点，添加一个空的端点表单
+            addOpenAIEndpointForm();
+          } else {
+            // 加载现有端点
+            for (var i = 0; i < endpoints.length; i++) {
+              addOpenAIEndpointForm(endpoints[i]);
+            }
+          }
+        }
+        
+        // 添加OpenAI端点表单
+        function addOpenAIEndpointForm(endpoint) {
+          // 默认值处理
+          endpoint = endpoint || null;
+          
+          var container = document.getElementById('openaiEndpointsContainer');
+          var id = Date.now(); // 使用时间戳作为唯一ID
+          
+          // 使用字符串拼接而不是模板字符串，避免语法解析问题
+          var endpointHtml = 
+            '<div class="openai-endpoint card mb-3" data-id="' + id + '">' +
+              '<div class="card-body">' +
+                '<div class="d-flex justify-content-between align-items-center mb-3">' +
+                  '<h6 class="card-subtitle">端点配置</h6>' +
+                  '<button type="button" class="btn btn-sm btn-outline-danger remove-endpoint" data-id="' + id + '">' +
+                    '<i class="bi bi-trash"></i> 删除' +
+                  '</button>' +
+                '</div>' +
+                '<div class="row g-3">' +
+                  '<div class="col-md-6">' +
+                    '<label class="form-label">端点名称</label>' +
+                    '<input type="text" class="form-control endpoint-name-' + id + '" placeholder="例如: Azure OpenAI" value="' + (endpoint ? (endpoint.name || '') : '') + '">' +
+                  '</div>' +
+                  '<div class="col-md-6">' +
+                    '<label class="form-label">API端点URL</label>' +
+                    '<input type="url" class="form-control endpoint-url-' + id + '" placeholder="https://xxxx.openai.azure.com" value="' + (endpoint ? (endpoint.url || '') : '') + '">' +
+                  '</div>' +
+                  '<div class="col-md-6">' +
+                    '<label class="form-label">API密钥</label>' +
+                    '<div class="api-key-wrapper">' +
+                      '<input type="password" class="form-control endpoint-apikey-' + id + '" placeholder="sk-..." value="' + (endpoint ? (endpoint.apiKey || '') : '') + '">' +
+                      '<button type="button" class="api-key-toggle" data-target="endpoint-apikey-' + id + '">' +
+                        '<i class="bi bi-eye"></i>' +
+                      '</button>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="col-md-6">' +
+                    '<label class="form-label">支持的模型</label>' +
+                    '<input type="text" class="form-control endpoint-models-' + id + '" placeholder="gpt-4,gpt-3.5-turbo (留空表示支持所有模型)" value="' + (endpoint && endpoint.models ? endpoint.models.join(',') : '') + '">' +
+                    '<div class="form-text">多个模型用英文逗号分隔，留空表示支持所有模型</div>' +
+                  '</div>' +
+                  '<div class="col-md-6">' +
+                    '<div class="form-check form-switch mt-4">' +
+                      '<input class="form-check-input endpoint-native-fetch-' + id + '" type="checkbox" id="useNativeFetch-' + id + '"' + (endpoint && endpoint.useNativeFetch ? ' checked' : '') + '>' +
+                      '<label class="form-check-label" for="useNativeFetch-' + id + '">使用原生Fetch</label>' +
+                      '<div class="form-text">启用可增强安全性，但会无法访问使用Cloudflare CDN的API</div>' +
+                    '</div>' +
+                  '</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>';
+          
+          // 添加到容器
+          container.insertAdjacentHTML('beforeend', endpointHtml);
+          
+          // 添加删除事件监听器
+          var removeButtonSelector = '.remove-endpoint[data-id="' + id + '"]';
+          var removeButton = container.querySelector(removeButtonSelector);
+          removeButton.addEventListener('click', function() {
+            var endpointSelector = '.openai-endpoint[data-id="' + id + '"]';
+            var endpoint = document.querySelector(endpointSelector);
+            endpoint.remove();
+          });
+          
+          // 添加API密钥切换可见性事件
+          var toggleButtonSelector = '.api-key-toggle[data-target="endpoint-apikey-' + id + '"]';
+          var toggleButton = container.querySelector(toggleButtonSelector);
+          toggleButton.addEventListener('click', function() {
+            var inputSelector = '.endpoint-apikey-' + id;
+            var input = document.querySelector(inputSelector);
+            var icon = this.querySelector('i');
+            if (input.type === 'password') {
+              input.type = 'text';
+              icon.classList.remove('bi-eye');
+              icon.classList.add('bi-eye-slash');
+            } else {
+              input.type = 'password';
+              icon.classList.remove('bi-eye-slash');
+              icon.classList.add('bi-eye');
+            }
+          });
+        }
+        
+        // 添加端点按钮事件
+        document.getElementById('addOpenAIEndpoint').addEventListener('click', function() {
+          addOpenAIEndpointForm();
+        });
       </script>
     </body>
   </html>
@@ -2322,8 +2649,16 @@ async function handleRequest(request, config) {
   }
 
   try {
-    // 验证代理API密钥
+    // 解析请求URL
+    const url = new URL(request.url);
+    const path = url.pathname + url.search;
+    
+    // 检查是否为模型列表请求
+    const isModelsReq = isModelsRequest(path);
+    
+    // 验证代理API密钥 (对于模型列表请求，validateProxyApiKey已经放宽了验证)
     if (!validateProxyApiKey(request, config)) {
+      console.log("API密钥验证失败");
       return new Response(JSON.stringify({
         error: {
           message: "Invalid API key or missing authentication",
@@ -2338,13 +2673,10 @@ async function handleRequest(request, config) {
         },
       });
     }
-
-    // 解析请求URL
-    const url = new URL(request.url);
-    const path = url.pathname + url.search;
     
     // 检查是否为模型列表请求,如果是则特殊处理
-    if (isModelsRequest(path)) {
+    if (isModelsReq) {
+      console.log("处理模型列表请求");
       return await handleModelsRequest(request, config);
     }
 
@@ -2369,30 +2701,98 @@ async function handleRequest(request, config) {
       }
     } else {
       // 默认使用OpenAI API
-      const upstreamUrl = extractUpstreamUrl(request, config);
+      const upstreamUrlInfo = extractUpstreamUrl(request, config);
       const outgoingApiKey = extractOutgoingApiKey(request, config);
       
+      // 模型验证：检查请求的模型是否在允许列表中
+      if (upstreamUrlInfo.restrictedModels && requestBody.model) {
+        const modelName = requestBody.model.toString().toLowerCase();
+        const isModelAllowed = upstreamUrlInfo.restrictedModels.some(
+          m => modelName === m.toLowerCase() || modelName.includes(m.toLowerCase())
+        );
+        
+        // 如果端点有指定模型列表，且请求的模型不在列表中，则拒绝请求
+        if (!isModelAllowed) {
+          return new Response(JSON.stringify({
+            error: {
+              message: `模型 ${requestBody.model} 不在此端点的支持列表中`,
+              type: "invalid_request_error",
+              param: "model",
+              code: 400
+            }
+          }), {
+            status: 400,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            }
+          });
+        }
+      }
+      
       upstreamRequest = createUpstreamRequest(
-        `${upstreamUrl}${path}`, 
+        `${upstreamUrlInfo.url}${path}`, 
         request, 
         requestBody, 
         outgoingApiKey
       );
+      
+      // 添加原生Fetch标志
+      upstreamRequest.useNativeFetch = upstreamUrlInfo.useNativeFetch;
     }
     
-    // 使用nativeFetch发送请求到上游API
-    const upstreamResponse = await nativeFetch(upstreamRequest, upstreamRequest.url);
+    // 根据配置决定是否使用原生Fetch
+    let upstreamResponse;
+    
+    console.log(`使用${upstreamRequest.useNativeFetch && !upstreamRequest.forceStandardFetch ? '原生' : '标准'}Fetch发送请求到: ${upstreamRequest.url}`);
+    
+    if (upstreamRequest.useNativeFetch && !upstreamRequest.forceStandardFetch) {
+      // 使用nativeFetch发送请求到上游API
+      upstreamResponse = await nativeFetch(upstreamRequest, upstreamRequest.url);
+    } else {
+      // 使用标准fetch
+      // 构建标准fetch请求
+      const fetchOptions = {
+        method: upstreamRequest.method || 'POST',
+        headers: upstreamRequest.headers,
+        body: upstreamRequest.body
+      };
+      
+      try {
+        upstreamResponse = await fetch(upstreamRequest.url, fetchOptions);
+      } catch (fetchError) {
+        console.error(`标准Fetch失败，尝试回退到原生Fetch: ${fetchError.message}`);
+        // 如果标准fetch失败，回退到nativeFetch
+        upstreamResponse = await nativeFetch(upstreamRequest, upstreamRequest.url);
+      }
+    }
+    
+    // 记录上游API的响应状态
+    console.log(`上游API响应: status=${upstreamResponse.status}, 流请求=${isStreamRequest}`);
     
     // 如果不是流式请求或响应不成功,直接返回上游响应
     if (!isStreamRequest || !upstreamResponse.ok) {
       // 如果不是OpenAI API,需要转换响应格式
       if (apiType !== 'openai' && upstreamResponse.ok) {
+        console.log(`转换非OpenAI格式(${apiType})响应为OpenAI格式`);
         return await convertToOpenAIResponse(upstreamResponse, apiType, config);
       }
+      
+      // 如果响应失败，记录错误信息
+      if (!upstreamResponse.ok) {
+        try {
+          const errorText = await upstreamResponse.clone().text();
+          console.error(`上游API错误: status=${upstreamResponse.status}, body=${errorText.substring(0, 200)}`);
+        } catch (e) {
+          console.error(`无法读取上游API错误详情: ${e.message}`);
+        }
+      }
+      
       return addCorsHeaders(upstreamResponse);
     }
     
     // 处理流式响应
+    console.log(`开始处理${apiType}流式响应`);
     return handleStreamingResponse(upstreamResponse, apiType, config);
   } catch (error) {
     console.error("Error handling request:", error);
@@ -2421,24 +2821,132 @@ function determineApiType(modelName, config) {
 // 统一处理模型列表请求
 async function handleModelsRequest(request, config) {
   try {
+    // 添加调试日志，记录请求和配置状态
+    console.log("处理模型列表请求...");
+    console.log("OpenAI配置:", { 
+      hasDefaultKey: !!config.defaultOutgoingApiKey,
+      hasEndpoints: !!(config.openaiEndpoints && config.openaiEndpoints.length > 0),
+      endpointsCount: config.openaiEndpoints ? config.openaiEndpoints.length : 0,
+      defaultUrl: config.defaultUpstreamUrl
+    });
+    console.log("Gemini配置:", { 
+      enabled: !!config.geminiEnabled, 
+      hasApiKey: !!config.geminiApiKey,
+      url: config.geminiUpstreamUrl
+    });
+    console.log("Anthropic配置:", { 
+      enabled: !!config.anthropicEnabled, 
+      hasApiKey: !!config.anthropicApiKey,
+      url: config.anthropicUpstreamUrl
+    });
+    
     // 只获取已配置的提供商的模型列表
     const promises = [];
+    const providerStatuses = {};
     
-    // 始终获取OpenAI模型(如果配置了API密钥)
-    if (config.defaultOutgoingApiKey) {
-      promises.push(getOpenAIModels(request, config));
+    // 处理OpenAI模型获取
+    if (config.defaultOutgoingApiKey || (config.openaiEndpoints && config.openaiEndpoints.length > 0)) {
+      console.log("添加OpenAI模型获取任务...");
+      const openaiPromise = getOpenAIModels(request, config)
+        .then(models => {
+          providerStatuses.openai = {
+            success: true,
+            count: models?.data?.length || 0
+          };
+          return models;
+        })
+        .catch(error => {
+          console.error("获取OpenAI模型时出错:", error);
+          providerStatuses.openai = {
+            success: false,
+            error: error.message
+          };
+          return { object: "list", data: [] };
+        });
+      
+      promises.push(openaiPromise);
+    } else {
+      console.log("未配置OpenAI API密钥，跳过获取OpenAI模型");
+      providerStatuses.openai = {
+        success: false,
+        reason: "未配置API密钥"
+      };
     }
     
-    // 仅在启用时获取Gemini模型
+    // 处理Gemini模型获取
     if (config.geminiEnabled) {
-      promises.push(getGeminiModels(request, config));
+      console.log("添加Gemini模型获取任务...");
+      const geminiPromise = getGeminiModels(request, config)
+        .then(models => {
+          providerStatuses.gemini = {
+            success: true,
+            count: models?.data?.length || 0
+          };
+          return models;
+        })
+        .catch(error => {
+          console.error("获取Gemini模型时出错:", error);
+          providerStatuses.gemini = {
+            success: false,
+            error: error.message
+          };
+          return { object: "list", data: [] };
+        });
+      
+      promises.push(geminiPromise);
+    } else {
+      console.log("Gemini API未启用，跳过获取Gemini模型");
+      providerStatuses.gemini = {
+        success: false,
+        reason: "未启用"
+      };
     }
     
-    // 仅在启用时获取Anthropic模型
+    // 处理Anthropic模型获取
     if (config.anthropicEnabled) {
-      promises.push(getAnthropicModels(request, config));
+      console.log("添加Anthropic模型获取任务...");
+      const anthropicPromise = getAnthropicModels(request, config)
+        .then(models => {
+          providerStatuses.anthropic = {
+            success: true,
+            count: models?.data?.length || 0
+          };
+          return models;
+        })
+        .catch(error => {
+          console.error("获取Anthropic模型时出错:", error);
+          providerStatuses.anthropic = {
+            success: false,
+            error: error.message
+          };
+          return { object: "list", data: [] };
+        });
+      
+      promises.push(anthropicPromise);
+    } else {
+      console.log("Anthropic API未启用，跳过获取Anthropic模型");
+      providerStatuses.anthropic = {
+        success: false,
+        reason: "未启用"
+      };
     }
     
+    // 如果没有任何获取任务，返回空列表
+    if (promises.length === 0) {
+      console.log("没有配置任何API密钥，返回空模型列表");
+      return new Response(JSON.stringify({ 
+        object: "list", 
+        data: []
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+    
+    console.log(`开始执行${promises.length}个模型获取任务...`);
     // 等待所有模型列表获取完成
     const modelLists = await Promise.all(promises);
     
@@ -2450,10 +2958,28 @@ async function handleModelsRequest(request, config) {
     
     // 过滤掉无效结果并合并数据
     for (const list of modelLists) {
+      console.log(`处理模型列表结果:`, { 
+        isValid: !!(list && list.data && Array.isArray(list.data)),
+        modelCount: list && list.data && Array.isArray(list.data) ? list.data.length : 0
+      });
+      
       if (list && list.data && Array.isArray(list.data)) {
-        combinedModels.data = combinedModels.data.concat(list.data);
+        // 只保留必要的字段，确保符合OpenAI API格式
+        const cleanedModels = list.data.map(model => ({
+          id: model.id,
+          object: "model",
+          created: model.created || Math.floor(Date.now() / 1000),
+          owned_by: model.owned_by || "unknown"
+        }));
+        
+        combinedModels.data = combinedModels.data.concat(cleanedModels);
       }
     }
+    
+    console.log(`合并后的模型列表包含${combinedModels.data.length}个模型`);
+    
+    // 按名称排序
+    combinedModels.data.sort((a, b) => a.id.localeCompare(b.id));
     
     return new Response(JSON.stringify(combinedModels), {
       status: 200,
@@ -2463,242 +2989,236 @@ async function handleModelsRequest(request, config) {
       },
     });
   } catch (error) {
-    console.error("Error handling models request:", error);
+    console.error("处理模型列表请求出错:", error);
     return createErrorResponse(error);
   }
 }
 
-// 获取OpenAI模型列表
-async function getOpenAIModels(request, config) {
+// 从多个OpenAI端点获取模型列表
+async function getOpenAIModelsFromMultipleEndpoints(config) {
   try {
-    const upstreamUrl = extractUpstreamUrl(request, config);
-    const outgoingApiKey = extractOutgoingApiKey(request, config);
+    console.log("从多个端点获取OpenAI模型列表...");
+    const modelPromises = [];
     
-    // 如果没有API密钥,则跳过
-    if (!outgoingApiKey) return { object: "list", data: [] };
-    
-    const upstreamRequest = {
-      method: "GET",
-      headers: new Headers({
-        "Authorization": `Bearer ${outgoingApiKey}`,
-        "Content-Type": "application/json"
-      }),
-      url: `${upstreamUrl}/v1/models`
-    };
-    
-    const response = await nativeFetch(upstreamRequest, upstreamRequest.url);
-    if (!response.ok) return { object: "list", data: [] };
-    
-    const models = await response.json();
-    
-    // 添加提供商标签
-    if (models && models.data) {
-      models.data.forEach(model => {
-        model.owned_by = model.owned_by || "openai";
-      });
-    }
-    
-    return models;
-  } catch (error) {
-    console.error("Error fetching OpenAI models:", error);
-    return { object: "list", data: [] };
-  }
-}
-
-// 获取Gemini模型列表
-async function getGeminiModels(request, config) {
-  try {
-    const apiKey = getGeminiApiKey(request, config);
-    
-    // 如果没有API密钥,则跳过
-    if (!apiKey) return { object: "list", data: [] };
-    
-    // 尝试从Gemini API获取模型列表
-    try {
-      // 请求Gemini模型API
-      const modelListUrl = `${config.geminiUpstreamUrl}/v1beta/models?key=${apiKey}`;
-      // 创建基本请求对象
-      const modelRequest = {
+    // 从每个端点获取模型
+    for (const endpoint of config.openaiEndpoints) {
+      // 跳过没有API密钥的端点
+      if (!endpoint.apiKey) {
+        console.log(`跳过没有API密钥的端点: ${endpoint.name || '未命名'}`);
+        continue;
+      }
+      
+      console.log(`处理端点: ${endpoint.name || '未命名'}, URL: ${endpoint.url}`);
+      
+      // 获取API密钥（支持负载均衡）
+      let apiKey = endpoint.apiKey;
+      if (apiKey.includes(',')) {
+        const keys = apiKey.split(',').map(k => k.trim()).filter(Boolean);
+        if (keys.length > 0) {
+          apiKey = keys[Math.floor(Math.random() * keys.length)];
+          console.log(`使用负载均衡，从 ${keys.length} 个API密钥中选择一个`);
+        } else {
+          console.log("API密钥格式错误，没有有效的密钥");
+          continue;
+        }
+      }
+      
+      // 确保URL格式正确
+      let url;
+      try {
+        const baseUrl = endpoint.url.endsWith('/') 
+          ? endpoint.url.slice(0, -1) 
+          : endpoint.url;
+        
+        url = `${baseUrl}/v1/models`;
+      } catch (urlError) {
+        console.error(`构建URL时出错, 端点 ${endpoint.name || '未命名'}:`, urlError);
+        continue;
+      }
+      
+      // 创建请求
+      const upstreamRequest = {
         method: "GET",
         headers: new Headers({
+          "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         }),
-        url: modelListUrl
+        url: url
       };
       
-      const response = await nativeFetch(modelRequest, modelListUrl);
+      console.log(`从端点 ${endpoint.name || '未命名'} 请求模型列表: ${url}`);
       
-      if (response.ok) {
-        const geminiResponse = await response.json();
-        
-        // 将Gemini响应格式转换为OpenAI格式
-        if (geminiResponse && geminiResponse.models) {
-          return {
-            object: "list",
-            data: geminiResponse.models
-              .filter(model => model.name.includes("gemini"))
-              .map(model => ({
-                id: model.name.split('/').pop(),  // 从路径中提取模型名称
-                object: "model",
-                created: Math.floor(Date.now() / 1000) - 86400 * 30, // 近似创建时间
-                owned_by: "google"
-              }))
-          };
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching Gemini models:", error);
-    }
-    
-    // 如果请求失败或没有模型,则返回预设的模型列表
-    return {
-      object: "list",
-      data: [
-        {
-          id: "gemini-1.5-pro-latest",
-          object: "model",
-          created: Math.floor(Date.now() / 1000) - 86400 * 30,
-          owned_by: "google"
-        },
-        {
-          id: "gemini-1.5-flash-latest",
-          object: "model",
-          created: Math.floor(Date.now() / 1000) - 86400 * 30,
-          owned_by: "google"
-        },
-        {
-          id: "gemini-pro-vision",
-          object: "model",
-          created: Math.floor(Date.now() / 1000) - 86400 * 60,
-          owned_by: "google"
-        }
-      ]
-    };
-  } catch (error) {
-    console.error("Error in Gemini models function:", error);
-    return { object: "list", data: [] };
-  }
-}
-
-// 获取Anthropic模型列表
-async function getAnthropicModels(request, config) {
-  try {
-    // 确保Anthropic功能已启用且有API密钥
-    if (!config.anthropicEnabled) {
-      return { object: "list", data: [] };
-    }
-    
-    const apiKey = getAnthropicApiKey(request, config);
-    if (!apiKey) {
-      return { object: "list", data: [] };
-    }
-    
-    // 尝试动态获取Anthropic模型
-    try {
-      // 创建请求对象
-      const modelRequest = {
-        method: "GET",
-        headers: new Headers({
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01"
-        }),
-        url: `${config.anthropicUpstreamUrl}/v1/models`
-      };
-      
-      const response = await nativeFetch(modelRequest, modelRequest.url);
-      
-      if (response.ok) {
-        const anthropicModels = await response.json();
-        
-        if (anthropicModels && anthropicModels.data) {
-          // 将Anthropic响应格式转换为OpenAI格式
-          return {
-            object: "list",
-            data: anthropicModels.data.map(model => ({
+      // 发送请求并处理响应
+      const modelPromise = (async () => {
+        try {
+          let response;
+          try {
+            // 尝试使用nativeFetch发送请求
+            response = await nativeFetch(upstreamRequest, upstreamRequest.url);
+          } catch (fetchError) {
+            console.error(`端点 ${endpoint.name || '未命名'} nativeFetch失败:`, fetchError);
+            
+            // 尝试使用标准fetch
+            try {
+              console.log(`尝试使用标准fetch访问端点 ${endpoint.name || '未命名'}...`);
+              const fetchOptions = {
+                method: "GET",
+                headers: new Headers({
+                  "Authorization": `Bearer ${apiKey}`,
+                  "Content-Type": "application/json"
+                })
+              };
+              
+              response = await fetch(url, fetchOptions);
+            } catch (stdFetchError) {
+              console.error(`端点 ${endpoint.name || '未命名'} 标准fetch也失败:`, stdFetchError);
+              return { object: "list", data: [] };
+            }
+          }
+          
+          console.log(`端点 ${endpoint.name || '未命名'} 响应状态: ${response.status}`);
+          
+          if (!response.ok) {
+            console.error(`从端点 ${endpoint.name || '未命名'} 获取模型列表失败: ${response.status}`);
+            try {
+              const errorText = await response.clone().text();
+              console.error(`错误详情: ${errorText.substring(0, 200)}`);
+            } catch (e) {}
+            return { object: "list", data: [] };
+          }
+          
+          let models;
+          try {
+            models = await response.json();
+          } catch (jsonError) {
+            console.error(`解析端点 ${endpoint.name || '未命名'} 响应JSON失败:`, jsonError);
+            return { object: "list", data: [] };
+          }
+          
+          // 添加端点名称作为标识并标准化数据格式
+          if (models && models.data) {
+            console.log(`从端点 ${endpoint.name || '未命名'} 获取到 ${models.data.length} 个模型`);
+            
+            // 标准化模型数据，只保留必要字段
+            models.data = models.data.map(model => ({
               id: model.id,
               object: "model",
-              created: Math.floor(Date.now() / 1000) - 86400 * 30, // 近似创建时间
-              owned_by: "anthropic"
-            }))
-          };
+              created: model.created || Math.floor(Date.now() / 1000),
+              owned_by: model.owned_by || "openai"
+            }));
+          } else {
+            console.log(`端点 ${endpoint.name || '未命名'} 返回的数据格式不正确`);
+          }
+          
+          return models;
+        } catch (error) {
+          console.error(`从端点 ${endpoint.name || '未命名'} 获取模型时出错:`, error);
+          return { object: "list", data: [] };
         }
-      }
-    } catch (error) {
-      console.error("Error fetching Anthropic models:", error);
+      })();
+      
+      modelPromises.push(modelPromise);
     }
     
-    // 如果动态获取失败,使用预设模型列表
-    return {
+    // 如果没有有效的端点，返回空列表
+    if (modelPromises.length === 0) {
+      console.log("没有有效的OpenAI端点，返回空列表");
+      return {
+        object: "list",
+        data: []
+      };
+    }
+    
+    console.log(`等待 ${modelPromises.length} 个端点的请求完成...`);
+    // 等待所有请求完成
+    const modelLists = await Promise.all(modelPromises);
+    
+    // 合并所有模型列表
+    const combinedModels = {
       object: "list",
-      data: [
-        {
-          id: "claude-3-opus-20240229",
-          object: "model",
-          created: Math.floor(Date.now() / 1000) - 86400 * 30,
-          owned_by: "anthropic"
-        },
-        {
-          id: "claude-3-sonnet-20240229",
-          object: "model",
-          created: Math.floor(Date.now() / 1000) - 86400 * 30,
-          owned_by: "anthropic"
-        },
-        {
-          id: "claude-3-haiku-20240307",
-          object: "model",
-          created: Math.floor(Date.now() / 1000) - 86400 * 30,
-          owned_by: "anthropic"
-        },
-        {
-          id: "claude-3-5-sonnet-20240620",
-          object: "model",
-          created: Math.floor(Date.now() / 1000) - 86400 * 7,
-          owned_by: "anthropic"
-        }
-      ]
+      data: []
     };
+    
+    // 合并数据
+    for (const list of modelLists) {
+      if (list && list.data && Array.isArray(list.data)) {
+        console.log(`合并模型列表，包含 ${list.data.length} 个模型`);
+        combinedModels.data = combinedModels.data.concat(list.data);
+      }
+    }
+    
+    console.log(`合并后共有 ${combinedModels.data.length} 个模型`);
+    return combinedModels;
   } catch (error) {
-    console.error("Error in Anthropic models function:", error);
-    return { object: "list", data: [] };
+    console.error("从多个端点获取OpenAI模型时出错:", error);
+    throw error;  // 重新抛出异常以便上层函数捕获
   }
 }
 
-// 检查是否为模型列表请求
-function isModelsRequest(path) {
-  return path === '/v1/models' || path.startsWith('/v1/models?');
-}
-
-// 验证代理API密钥
-function validateProxyApiKey(request, config) {
-  // 如果没有设置代理API密钥,则不需要验证
-  if (!config.proxyApiKey) {
-    return true;
-  }
-  
-  // 从请求头中获取API密钥
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return false;
-  }
-  
-  const apiKey = authHeader.substring(7).trim();
-  
-  // 检查API密钥是否匹配
-  // 支持多个API密钥(逗号分隔)
-  const validKeys = config.proxyApiKey.split(',').map(k => k.trim()).filter(Boolean);
-  return validKeys.includes(apiKey);
-}
-
-// 提取上游API URL
-function extractUpstreamUrl(request, config) {
-  return request.headers.get("X-Upstream-URL") || config.defaultUpstreamUrl;
-}
-
-// 提取API密钥并进行负载均衡
+// 提取API密钥并进行负载均衡，支持多端点路由
 function extractOutgoingApiKey(request, config) {
   // 首先尝试从自定义头部获取
   const customApiKey = request.headers.get("X-Outgoing-API-Key");
   if (customApiKey) return customApiKey;
+  
+  // 如果有多个端点配置，并且请求中包含模型信息，则尝试根据模型选择API密钥
+  if (config.openaiEndpoints && config.openaiEndpoints.length > 0) {
+    try {
+      // 克隆请求以免影响原请求
+      const clonedRequest = request.clone();
+      
+      // 异步获取请求体
+      const requestBodyPromise = clonedRequest.json().catch(() => null);
+      
+      // 设置一个超时，如果无法快速获取请求体，则使用默认API密钥
+      const timeoutPromise = new Promise(resolve => {
+        setTimeout(() => resolve(null), 50); // 50毫秒超时
+      });
+      
+      // 竞争获取请求体
+      const requestBody = Promise.race([requestBodyPromise, timeoutPromise]).catch(() => null);
+      
+      // 如果成功获取请求体并包含模型名称
+      if (requestBody && requestBody.model) {
+        const modelName = requestBody.model.toString().toLowerCase();
+        
+        // 遍历所有端点，查找支持该模型的端点
+        for (const endpoint of config.openaiEndpoints) {
+          // 如果端点没有指定模型列表或模型列表为空，则支持所有模型
+          if (!endpoint.models || endpoint.models.length === 0) {
+            // 支持负载均衡（端点API密钥可以包含多个逗号分隔的密钥）
+            if (endpoint.apiKey) {
+              const keys = endpoint.apiKey.split(',').map(k => k.trim()).filter(Boolean);
+              if (keys.length > 0) {
+                return keys[Math.floor(Math.random() * keys.length)];
+              }
+            }
+          }
+          
+          // 如果端点模型列表包含请求的模型
+          if (endpoint.models && endpoint.models.some(m => modelName === m.toLowerCase() || modelName.includes(m.toLowerCase()))) {
+            // 支持负载均衡
+            if (endpoint.apiKey) {
+              const keys = endpoint.apiKey.split(',').map(k => k.trim()).filter(Boolean);
+              if (keys.length > 0) {
+                return keys[Math.floor(Math.random() * keys.length)];
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("提取模型信息以确定API密钥时出错:", error);
+    }
+    
+    // 如果无法根据模型确定端点，则返回第一个端点的API密钥
+    if (config.openaiEndpoints.length > 0 && config.openaiEndpoints[0].apiKey) {
+      const keys = config.openaiEndpoints[0].apiKey.split(',').map(k => k.trim()).filter(Boolean);
+      if (keys.length > 0) {
+        return keys[Math.floor(Math.random() * keys.length)];
+      }
+    }
+  }
   
   // 尝试从配置中获取并进行负载均衡
   if (config.defaultOutgoingApiKey) {
@@ -2718,7 +3238,128 @@ function extractOutgoingApiKey(request, config) {
   return "";
 }
 
-// Gemini API密钥负载均衡
+// 提取上游URL并支持多端点路由
+function extractUpstreamUrl(request, config) {
+  // 首先尝试从自定义头部获取
+  const customUrl = request.headers.get("X-Upstream-URL");
+  if (customUrl) return { url: customUrl, useNativeFetch: true, restrictedModels: null };
+  
+  // 如果有多个端点配置，并且请求中包含模型信息，则尝试根据模型选择URL
+  if (config.openaiEndpoints && config.openaiEndpoints.length > 0) {
+    try {
+      // 克隆请求以免影响原请求
+      const clonedRequest = request.clone();
+      
+      // 异步获取请求体
+      const requestBodyPromise = clonedRequest.json().catch(() => null);
+      
+      // 设置一个超时，如果无法快速获取请求体，则使用默认URL
+      const timeoutPromise = new Promise(resolve => {
+        setTimeout(() => resolve(null), 50); // 50毫秒超时
+      });
+      
+      // 竞争获取请求体
+      const requestBody = Promise.race([requestBodyPromise, timeoutPromise]).catch(() => null);
+      
+      // 如果成功获取请求体并包含模型名称
+      if (requestBody && requestBody.model) {
+        const modelName = requestBody.model.toString().toLowerCase();
+        
+        // 第一轮：尝试寻找有明确指定模型列表并匹配当前模型的端点
+        // 这确保了优先使用专门为请求模型配置的端点
+        const specificEndpoints = config.openaiEndpoints.filter(endpoint => 
+          endpoint.url && endpoint.models && endpoint.models.length > 0
+        );
+        
+        for (const endpoint of specificEndpoints) {
+          if (endpoint.models.some(m => modelName === m.toLowerCase() || modelName.includes(m.toLowerCase()))) {
+            console.log(`模型 ${modelName} 匹配到专用端点: ${endpoint.name}`);
+            return { 
+              url: endpoint.url, 
+              useNativeFetch: endpoint.useNativeFetch !== undefined ? endpoint.useNativeFetch : true,
+              restrictedModels: endpoint.models
+            };
+          }
+        }
+        
+        // 第二轮：尝试寻找未指定模型列表的通用端点
+        // 只有在没有找到专用端点时才使用通用端点
+        const genericEndpoints = config.openaiEndpoints.filter(endpoint => 
+          endpoint.url && (!endpoint.models || endpoint.models.length === 0)
+        );
+        
+        if (genericEndpoints.length > 0) {
+          console.log(`模型 ${modelName} 未找到专用端点，使用通用端点: ${genericEndpoints[0].name}`);
+          return { 
+            url: genericEndpoints[0].url, 
+            useNativeFetch: genericEndpoints[0].useNativeFetch !== undefined ? genericEndpoints[0].useNativeFetch : true,
+            restrictedModels: null
+          };
+        }
+        
+        // 如果既没有找到专用端点也没有通用端点，使用第一个有效端点
+        console.log(`模型 ${modelName} 未找到匹配端点，使用第一个有效端点`);
+      }
+    } catch (error) {
+      console.error("提取模型信息以确定上游URL时出错:", error);
+    }
+  }
+  
+  // 如果没有找到匹配的端点或出错，则使用第一个有效的端点URL
+  if (config.openaiEndpoints && config.openaiEndpoints.length > 0) {
+    for (const endpoint of config.openaiEndpoints) {
+      if (endpoint.url) {
+        return { 
+          url: endpoint.url, 
+          useNativeFetch: endpoint.useNativeFetch !== undefined ? endpoint.useNativeFetch : true,
+          restrictedModels: endpoint.models && endpoint.models.length > 0 ? endpoint.models : null
+        };
+      }
+    }
+  }
+  
+  // 最后才回退到默认URL
+  return { 
+    url: config.defaultUpstreamUrl || "https://api.openai.com", 
+    useNativeFetch: true,
+    restrictedModels: null
+  };
+}
+
+// 验证代理API密钥
+function validateProxyApiKey(request, config) {
+  // 获取请求路径
+  const url = new URL(request.url);
+  const path = url.pathname + url.search;
+  
+  // 如果是模型列表请求，可以放宽验证
+  const isModelsRequest = path.endsWith('/models') || path.includes('/models?');
+  
+  // 如果未配置代理API密钥，则不验证
+  if (!config.proxyApiKey) {
+    console.log(`API密钥验证: 未配置代理API密钥，验证通过`);
+    return true;
+  }
+  
+  // 获取请求中的密钥
+  const authHeader = request.headers.get("Authorization") || "";
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  const apiKey = bearerMatch ? bearerMatch[1].trim() : "";
+  
+  // 检查API密钥是否匹配
+  const isValid = apiKey === config.proxyApiKey;
+  
+  // 对于模型列表请求，即使API密钥不匹配也允许通过
+  // 这样可以确保客户端始终能获取模型列表
+  if (isModelsRequest && !isValid) {
+    console.log(`API密钥验证: 模型列表请求，即使密钥不匹配也允许通过`);
+    return true;
+  }
+  
+  console.log(`API密钥验证: ${isValid ? '通过' : '失败'}`);
+  return isValid;
+}
+
 function getGeminiApiKey(request, config) {
   // 首先尝试自定义头部
   const customKey = request.headers.get("X-Gemini-API-Key");
@@ -2750,527 +3391,6 @@ function getAnthropicApiKey(request, config) {
   }
   
   return "";
-}
-
-// 解析请求体和检查是否是流式请求
-async function parseRequestBody(request) {
-  let requestBody = {};
-  let isStreamRequest = false;
-  
-  if (request.method === "POST") {
-    try {
-      const contentType = request.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const clonedRequest = request.clone();
-        requestBody = await clonedRequest.json();
-        isStreamRequest = requestBody.stream === true;
-        
-        // 检查是否有多模态内容
-        if (requestBody.messages) {
-          const hasMultimodalContent = requestBody.messages.some(msg => 
-            Array.isArray(msg.content) && 
-            msg.content.some(item => item.type === 'image_url')
-          );
-          
-          if (hasMultimodalContent) {
-            console.log("检测到多模态请求（包含图片）");
-            
-            // 验证图片格式是否正确
-            for (const msg of requestBody.messages) {
-              if (Array.isArray(msg.content)) {
-                for (const item of msg.content) {
-                  if (item.type === 'image_url' && item.image_url) {
-                    // 记录图片URL类型（base64或URL）
-                    const isBase64 = item.image_url.url.startsWith('data:image/');
-                    console.log(`图片类型: ${isBase64 ? 'base64' : 'URL'}`);
-                    
-                    // 如果是base64，检查格式是否正确
-                    if (isBase64) {
-                      const urlParts = item.image_url.url.split(',');
-                      if (urlParts.length !== 2) {
-                        console.warn("Base64图片格式不正确");
-                      } else {
-                        const mimeType = urlParts[0].split(':')[1].split(';')[0];
-                        console.log(`图片MIME类型: ${mimeType}`);
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.error("Error parsing request body:", e);
-      throw new Error("Invalid JSON body");
-    }
-  }
-  
-  return { requestBody, isStreamRequest };
-}
-
-// 创建发送到OpenAI上游API的请求
-function createUpstreamRequest(url, originalRequest, requestBody, apiKey) {
-  const headers = new Headers(originalRequest.headers);
-  
-  // 设置API密钥
-  if (apiKey) {
-    headers.set("Authorization", `Bearer ${apiKey}`);
-  }
-  
-  // 确保Content-Type正确设置
-  if (originalRequest.method === "POST") {
-    headers.set("Content-Type", "application/json");
-  }
-  
-  // 移除自定义头部
-  headers.delete("X-Upstream-URL");
-  headers.delete("X-Outgoing-API-Key");
-  headers.delete("X-Anthropic-API-Key");
-  headers.delete("X-Gemini-API-Key");
-  
-  const requestInit = {
-    method: originalRequest.method,
-    headers: headers,
-    redirect: "follow",
-  };
-  
-  // 仅在POST请求时添加body
-  if (originalRequest.method === "POST" && Object.keys(requestBody).length > 0) {
-    // 检查是否有多模态内容（图片等）
-    if (requestBody.messages) {
-      const processedBody = { ...requestBody };
-      
-      // 设置默认的max_tokens值，如果未提供
-      if (processedBody.max_tokens === undefined) {
-        processedBody.max_tokens = 4096; // 使用一个足够大的默认值
-      }
-      
-      // 处理消息中的图片内容
-      processedBody.messages = requestBody.messages.map(msg => {
-        return msg;
-      });
-      
-      requestInit.body = JSON.stringify(processedBody);
-    } else {
-      // 对于非聊天完成API，也设置默认max_tokens
-      const processedBody = { ...requestBody };
-      if (processedBody.max_tokens === undefined) {
-        processedBody.max_tokens = 8192;
-      }
-      requestInit.body = JSON.stringify(processedBody);
-    }
-  }
-  
-  // 返回准备好的请求数据，而不是创建一个Request对象
-  // 这样nativeFetch可以直接使用这些数据，而不是尝试解析Request对象
-  requestInit.url = url;
-  return requestInit;
-}
-
-// 创建Gemini API请求
-async function createGeminiRequest(originalRequest, requestBody, config) {
-  const apiKey = getGeminiApiKey(originalRequest, config);
-  const headers = new Headers({
-    "Content-Type": "application/json",
-    "x-goog-api-client": "genai-js/0.21.0",
-    "x-goog-api-key": apiKey
-  });
-
-  let modelName = requestBody.model || "gemini-1.5-pro-latest";
-  if (!modelName.startsWith("models/")) {
-    modelName = `models/${modelName}`;
-  }
-
-  let geminiUrl = config.geminiUpstreamUrl;
-  if (geminiUrl.endsWith('/')) {
-    geminiUrl = geminiUrl.slice(0, -1);
-  }
-
-  const isStreamRequest = requestBody.stream === true;
-  const TASK = isStreamRequest ? "streamGenerateContent" : "generateContent";
-  let url = `${geminiUrl}/v1beta/${modelName}:${TASK}`;
-  if (isStreamRequest) {
-    url += "?alt=sse";
-  }
-
-  // 转换消息格式
-  const contents = [];
-  let system_instruction;
-  
-  for (const msg of requestBody.messages) {
-    if (msg.role === "system") {
-      system_instruction = {
-        parts: [{ text: msg.content }]
-      };
-    } else {
-      // 检查消息内容是否为对象数组（多模态内容）
-      if (Array.isArray(msg.content)) {
-        const parts = [];
-        
-        for (const contentItem of msg.content) {
-          if (contentItem.type === 'text') {
-            parts.push({ text: contentItem.text });
-          } else if (contentItem.type === 'image_url') {
-            // 处理图片URL
-            let imageData = contentItem.image_url.url;
-            
-            // 如果是base64格式的图片
-            if (imageData.startsWith('data:image/')) {
-              const base64Data = imageData.split(',')[1];
-              parts.push({
-                inline_data: {
-                  data: base64Data,
-                  mime_type: imageData.split(';')[0].split(':')[1]
-                }
-              });
-            } else {
-              // 如果是普通URL
-              parts.push({ 
-                inline_data: {
-                  data: imageData,
-                  mime_type: "application/octet-stream"
-                }
-              });
-            }
-          }
-        }
-        
-        contents.push({
-          role: msg.role === "assistant" ? "model" : "user",
-          parts: parts
-        });
-      } else {
-        // 处理纯文本消息
-        contents.push({
-          role: msg.role === "assistant" ? "model" : "user",
-          parts: [{ text: msg.content }]
-        });
-      }
-    }
-  }
-
-  // 配置生成参数
-  const generationConfig = {
-    temperature: requestBody.temperature ?? 0.9,
-    maxOutputTokens: requestBody.max_tokens || 8192,
-    topP: requestBody.top_p ?? 0.95,
-    topK: requestBody.top_k ?? 64,
-    presencePenalty: requestBody.presence_penalty,
-    frequencyPenalty: requestBody.frequency_penalty
-  };
-
-  // 准备Gemini请求体
-  const geminiBody = {
-    contents: contents,
-    safetySettings: [
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
-    ],
-    generationConfig
-  };
-
-  // 如果有系统指令,添加到请求
-  if (system_instruction) {
-    geminiBody.systemInstruction = system_instruction;
-  }
-
-  // 返回请求对象
-  return {
-    method: "POST",
-    headers: headers,
-    body: JSON.stringify(geminiBody),
-    url: url,
-    redirect: "follow"
-  };
-}
-
-// 创建Anthropic API请求
-async function createAnthropicRequest(originalRequest, requestBody, config) {
-  const apiKey = getAnthropicApiKey(originalRequest, config);
-  
-  const headers = new Headers({
-    "Content-Type": "application/json",
-    "x-api-key": apiKey,
-    "anthropic-version": "2023-06-01"
-  });
-
-  let anthropicUrl = config.anthropicUpstreamUrl;
-  if (anthropicUrl.endsWith('/')) {
-    anthropicUrl = anthropicUrl.slice(0, -1);
-  }
-
-  // 检查是否有多模态内容
-  let hasMultimodalContent = false;
-  if (requestBody.messages) {
-    hasMultimodalContent = requestBody.messages.some(msg => 
-      Array.isArray(msg.content) && 
-      msg.content.some(item => item.type === 'image_url')
-    );
-  }
-
-  // 如果有多模态内容，确保使用支持多模态的Claude模型
-  let anthropicBody;
-  if (hasMultimodalContent) {
-    // 转换请求格式为Anthropic格式
-    anthropicBody = convertToAnthropicFormat(requestBody);
-    
-    // 确保使用支持多模态的Claude模型
-    if (!anthropicBody.model.includes('claude-3')) {
-      // 默认使用Claude 3 Opus，它支持多模态
-      anthropicBody.model = 'claude-3-opus-20240229';
-    }
-  } else {
-    // 普通文本请求
-    anthropicBody = convertToAnthropicFormat(requestBody);
-  }
-  
-  return {
-    method: "POST",
-    headers: headers,
-    body: JSON.stringify(anthropicBody),
-    url: `${anthropicUrl}/v1/messages`,
-    redirect: "follow"
-  };
-}
-
-// OpenAI格式转换为Gemini格式
-function convertToGeminiFormat(openAiBody) {
-  const geminiBody = {
-    contents: [],
-    generationConfig: {}
-  };
-  
-  // 设置生成参数
-  if (openAiBody.temperature !== undefined) {
-    geminiBody.generationConfig.temperature = openAiBody.temperature;
-  }
-  if (openAiBody.max_tokens !== undefined) {
-    geminiBody.generationConfig.maxOutputTokens = openAiBody.max_tokens;
-  }
-  if (openAiBody.top_p !== undefined) {
-    geminiBody.generationConfig.topP = openAiBody.top_p;
-  }
-  
-  // 处理模型名称
-  const modelMap = {
-    "gpt-3.5-turbo": "gemini-pro",
-    "gpt-4": "gemini-1.5-pro",
-    "gpt-4-turbo": "gemini-1.5-pro",
-  };
-  
-  geminiBody.model = openAiBody.model && openAiBody.model.toString().startsWith("gemini") 
-    ? openAiBody.model 
-    : (modelMap[openAiBody.model] || "gemini-pro");
-  
-  // 处理消息
-  if (openAiBody.messages && Array.isArray(openAiBody.messages)) {
-    // 处理每条消息，保留原始结构
-    let currentUserParts = [];
-    let currentRole = null;
-    
-    for (const msg of openAiBody.messages) {
-      // 跳过系统消息，因为已在前面处理
-      if (msg.role === "system") continue;
-      
-      const role = msg.role === "assistant" ? "model" : "user";
-      
-      // 如果角色变化，添加前一个消息并重置
-      if (currentRole !== null && currentRole !== role && currentUserParts.length > 0) {
-        geminiBody.contents.push({
-          role: currentRole,
-          parts: currentUserParts
-        });
-        currentUserParts = [];
-      }
-      
-      currentRole = role;
-      
-      // 处理消息内容
-      if (Array.isArray(msg.content)) {
-        // 多模态内容
-        for (const contentItem of msg.content) {
-          if (contentItem.type === 'text') {
-            currentUserParts.push({ text: contentItem.text });
-          } else if (contentItem.type === 'image_url') {
-            // 处理图片URL
-            let imageData = contentItem.image_url.url;
-            
-            // 如果是base64格式的图片
-            if (imageData.startsWith('data:image/')) {
-              const base64Data = imageData.split(',')[1];
-              currentUserParts.push({
-                inline_data: {
-                  data: base64Data,
-                  mime_type: imageData.split(';')[0].split(':')[1]
-                }
-              });
-            } else {
-              // 如果是普通URL
-              currentUserParts.push({ 
-                inline_data: {
-                  data: imageData,
-                  mime_type: "application/octet-stream"
-                }
-              });
-            }
-          }
-        }
-      } else {
-        // 纯文本内容
-        currentUserParts.push({ text: msg.content });
-      }
-    }
-    
-    // 添加最后一组消息
-    if (currentRole !== null && currentUserParts.length > 0) {
-      geminiBody.contents.push({
-        role: currentRole,
-        parts: currentUserParts
-      });
-    }
-  }
-  
-  // 调试日志
-  console.log("转换后的Gemini请求体:", JSON.stringify(geminiBody, null, 2));
-  
-  return geminiBody;
-}
-
-// OpenAI格式转换为Anthropic格式
-function convertToAnthropicFormat(openAiBody) {
-  // 创建基本的Anthropic请求体
-  const anthropicBody = {
-    model: openAiBody.model && openAiBody.model.toString().startsWith("claude") 
-      ? openAiBody.model 
-      : "claude-3-opus-20240229", // 默认使用Claude 3
-    max_tokens: openAiBody.max_tokens || 4096,
-    temperature: openAiBody.temperature !== undefined ? openAiBody.temperature : 0.7,
-    top_p: openAiBody.top_p !== undefined ? openAiBody.top_p : 0.95,
-    stream: openAiBody.stream || false,
-    messages: []
-  };
-  
-  // 处理系统消息
-  if (openAiBody.messages) {
-    const systemMessages = openAiBody.messages.filter(msg => msg.role === "system");
-    if (systemMessages.length > 0) {
-      anthropicBody.system = systemMessages.map(msg => msg.content).join("\n");
-    }
-    
-    // 处理用户和助手消息
-    const nonSystemMessages = openAiBody.messages.filter(msg => msg.role !== "system");
-    
-    for (const msg of nonSystemMessages) {
-      let role = msg.role;
-      // Anthropic只支持用户和助手两种角色
-      if (role !== "assistant" && role !== "user") {
-        role = "user";
-      }
-      
-      // 处理消息内容
-      if (Array.isArray(msg.content)) {
-        // 多模态内容处理
-        const content = [];
-        
-        for (const item of msg.content) {
-          if (item.type === 'text') {
-            content.push({
-              type: 'text',
-              text: item.text
-            });
-          } else if (item.type === 'image_url') {
-            // 处理图片URL
-            let imageData = item.image_url.url;
-            
-            // 如果是base64格式的图片
-            if (imageData.startsWith('data:image/')) {
-              const mediaType = imageData.split(';')[0].split(':')[1];
-              const base64Data = imageData.split(',')[1];
-              
-              content.push({
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mediaType,
-                  data: base64Data
-                }
-              });
-            } else {
-              // 如果是普通URL
-              content.push({
-                type: 'image',
-                source: {
-                  type: 'url',
-                  url: imageData
-                }
-              });
-            }
-          }
-        }
-        
-        anthropicBody.messages.push({
-          role: role,
-          content: content
-        });
-      } else {
-        // 纯文本内容
-        anthropicBody.messages.push({
-          role: role,
-          content: [{ 
-            type: 'text',
-            text: msg.content 
-          }]
-        });
-      }
-    }
-  }
-  
-  return anthropicBody;
-}
-
-// 将非OpenAI响应转换为OpenAI格式
-async function convertToOpenAIResponse(response, apiType, config) {
-  // 如果不是成功的响应,直接返回
-  if (!response.ok) {
-    return addCorsHeaders(response);
-  }
-  
-  // 克隆响应以获取内容
-  const clonedResponse = response.clone();
-  const contentType = response.headers.get("content-type") || "";
-  
-  // 如果不是JSON响应,直接返回
-  if (!contentType.includes("application/json")) {
-    return addCorsHeaders(response);
-  }
-  
-  try {
-    const responseData = await clonedResponse.json();
-    let openAIFormatted;
-    
-    if (apiType === "gemini") {
-      openAIFormatted = convertGeminiToOpenAIFormat(responseData);
-    } else if (apiType === "anthropic") {
-      openAIFormatted = convertAnthropicToOpenAIFormat(responseData);
-    } else {
-      return addCorsHeaders(response);
-    }
-    
-    return new Response(JSON.stringify(openAIFormatted), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
-  } catch (error) {
-    console.error(`Error converting ${apiType} response:`, error);
-    return addCorsHeaders(response);
-  }
 }
 
 // 将Gemini响应转换为OpenAI格式
@@ -3517,13 +3637,77 @@ function createErrorResponse(error) {
 
 // 处理流式响应
 async function handleStreamingResponse(response, apiType, config) {
+  // 创建转换流
   const { readable, writable } = new TransformStream();
   
-  processStreamedResponse(response.body, writable, apiType, config).catch(err => {
-    console.error("Error processing stream:", err);
-    writable.abort(err);
-  });
+  // 设置监控变量
+  let streamActive = true;
+  let lastActivityTime = Date.now();
+  let heartbeatIntervalId = null;
   
+  // 心跳检测
+  heartbeatIntervalId = setInterval(() => {
+    if (!streamActive) {
+      clearInterval(heartbeatIntervalId);
+      return;
+    }
+    
+    const inactiveTime = Date.now() - lastActivityTime;
+    if (inactiveTime > 30000) {
+      console.log("发送心跳包保持连接...");
+      try {
+        // 不要在这里尝试获取writer，避免锁定问题
+        // 只记录日志，实际心跳在processStreamedResponse中处理
+      } catch (err) {
+        console.error("心跳处理错误:", err);
+      }
+    }
+  }, 15000);
+  
+  // 启动异步处理，不等待其完成
+  (async () => {
+    try {
+      await streamProcessor(response.body, writable, apiType, config, () => {
+        lastActivityTime = Date.now();
+      });
+    } catch (err) {
+      console.error("Stream处理发生错误:", err);
+      try {
+        // 如果流仍然激活，尝试发送错误信息
+        if (streamActive && !writable.locked) {
+          const writer = writable.getWriter();
+          try {
+            const encoder = new TextEncoder();
+            const errorMsg = JSON.stringify({
+              error: {
+                message: `流处理错误: ${err.message}`,
+                type: "stream_error",
+                code: 500
+              }
+            });
+            
+            await writer.write(encoder.encode(`data: ${errorMsg}\n\n`));
+            await writer.write(encoder.encode("data: [DONE]\n\n"));
+            await writer.close();
+          } catch (e) {
+            console.error("发送错误信息失败:", e);
+            try { writable.abort(err); } catch (e) {}
+          }
+        } else {
+          console.log("流已关闭或已锁定，跳过错误处理");
+        }
+      } catch (e) {
+        console.error("错误处理失败:", e);
+      }
+    } finally {
+      streamActive = false;
+      if (heartbeatIntervalId) {
+        clearInterval(heartbeatIntervalId);
+      }
+    }
+  })();
+  
+  // 立即返回响应，后台继续处理
   return addCorsHeaders(new Response(readable, {
     headers: {
       "Content-Type": "text/event-stream",
@@ -3533,10 +3717,10 @@ async function handleStreamingResponse(response, apiType, config) {
   }));
 }
 
-// 处理流式响应数据
-async function processStreamedResponse(inputStream, outputWriter, apiType, config) {
+// 新的流处理器函数
+async function streamProcessor(inputStream, outputStream, apiType, config, updateActivity) {
   const reader = inputStream.getReader();
-  const writer = outputWriter.getWriter();
+  const writer = outputStream.getWriter();
   
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -3545,32 +3729,45 @@ async function processStreamedResponse(inputStream, outputWriter, apiType, confi
   let lastChunkTime = Date.now();
   let recentChunkSizes = [];
   let currentDelay = config.minDelay;
+  let contentReceived = false;
+  
+  // 添加安全的活动更新函数
+  const safeUpdateActivity = typeof updateActivity === 'function' 
+    ? updateActivity 
+    : () => {};
   
   try {
+    console.log(`开始处理${apiType}流式响应`);
+    
     while (true) {
-      const { done, value } = await reader.read();
+      let readResult;
+      
+      try {
+        readResult = await reader.read();
+        safeUpdateActivity();
+      } catch (readError) {
+        console.error("读取流错误:", readError);
+        throw new Error(`流读取失败: ${readError.message}`);
+      }
+      
+      const { done, value } = readResult;
       
       if (done) {
+        console.log("流读取完成");
         if (buffer.length > 0) {
-          // 处理缓冲区剩余内容
-          if (apiType === "openai") {
-            await processSSELine(buffer, writer, encoder, currentDelay, config);
-          } else if (apiType === "gemini") {
-            await processGeminiSSELine(buffer, writer, encoder, currentDelay, config);
-          } else if (apiType === "anthropic") {
-            await processAnthropicSSELine(buffer, writer, encoder, currentDelay, config);
-          }
+          await processBuffer(buffer, writer, encoder, apiType, config);
         }
+        await writer.write(encoder.encode("data: [DONE]\n\n"));
         break;
       }
       
-      // 更新时间跟踪和延迟计算
+      // 更新延迟计算
       const currentTime = Date.now();
       const timeSinceLastChunk = currentTime - lastChunkTime;
       lastChunkTime = currentTime;
       
       if (value && value.length) {
-        // 更新最近块大小列表
+        // 更新延迟计算
         recentChunkSizes.push(value.length);
         if (recentChunkSizes.length > config.chunkBufferSize) {
           recentChunkSizes.shift();
@@ -3579,34 +3776,88 @@ async function processStreamedResponse(inputStream, outputWriter, apiType, confi
         // 计算新的延迟
         const avgChunkSize = recentChunkSizes.reduce((a, b) => a + b, 0) / recentChunkSizes.length;
         currentDelay = adaptDelay(avgChunkSize, timeSinceLastChunk, config);
-      }
-      
-      // 处理接收到的数据
-      buffer += decoder.decode(value, { stream: true });
-      
-      // 按行处理SSE消息
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      
-      for (const line of lines) {
-        if (apiType === "openai") {
-          await processSSELine(line, writer, encoder, currentDelay, config);
-        } else if (apiType === "gemini") {
-          await processGeminiSSELine(line, writer, encoder, currentDelay, config);
-        } else if (apiType === "anthropic") {
-          await processAnthropicSSELine(line, writer, encoder, currentDelay, config);
+        
+        // 处理接收到的数据
+        buffer += decoder.decode(value, { stream: true });
+        
+        // 按行处理
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        
+        if (lines.length > 0) {
+          // 检测是否有实际内容
+          if (!contentReceived) {
+            const hasContent = lines.some(line => 
+              line.trim() && line.startsWith("data: ") && line.slice(6).trim() !== ""
+            );
+            if (hasContent) {
+              contentReceived = true;
+              console.log("检测到有效内容");
+            }
+          }
+          
+          // 处理每一行
+          for (const line of lines) {
+            try {
+              if (apiType === "openai") {
+                await processSSELine(line, writer, encoder, currentDelay, config);
+              } else if (apiType === "gemini") {
+                await processGeminiSSELine(line, writer, encoder, currentDelay, config);
+              } else if (apiType === "anthropic") {
+                await processAnthropicSSELine(line, writer, encoder, currentDelay, config);
+              }
+            } catch (lineError) {
+              console.error(`处理行出错:`, lineError);
+              // 继续处理其他行
+            }
+          }
         }
       }
     }
   } catch (e) {
-    console.error("Stream processing error:", e);
+    console.error("流处理错误:", e);
+    try {
+      const errorMsg = JSON.stringify({
+        error: {
+          message: `流处理错误: ${e.message}`,
+          type: "stream_error",
+          code: 500
+        }
+      });
+      await writer.write(encoder.encode(`data: ${errorMsg}\n\n`));
+      await writer.write(encoder.encode("data: [DONE]\n\n"));
+    } catch (writeError) {
+      console.error("写入错误信息失败:", writeError);
+    }
   } finally {
+    console.log("流处理结束");
     try {
       await writer.close();
     } catch (e) {
-      console.error("Error closing writer:", e);
+      console.error("关闭writer失败:", e);
     }
-    reader.releaseLock();
+    try {
+      reader.releaseLock();
+    } catch (e) {
+      console.error("释放reader锁失败:", e);
+    }
+  }
+}
+
+// 处理缓冲区
+async function processBuffer(buffer, writer, encoder, apiType, config) {
+  if (!buffer.trim()) return;
+  
+  try {
+    if (apiType === "openai") {
+      await processSSELine(buffer, writer, encoder, config.minDelay, config);
+    } else if (apiType === "gemini") {
+      await processGeminiSSELine(buffer, writer, encoder, config.minDelay, config);
+    } else if (apiType === "anthropic") {
+      await processAnthropicSSELine(buffer, writer, encoder, config.minDelay, config);
+    }
+  } catch (e) {
+    console.error(`处理缓冲区出错: ${e.message}`);
   }
 }
 
@@ -3676,7 +3927,7 @@ async function processGeminiSSELine(line, writer, encoder, delay, config) {
 
   if (line.startsWith("data: ")) {
     const data = line.slice(6);
-    console.log("Gemini原始数据:", data);
+    console.log("Gemini原始数据:", data.substring(0, 100));  // 只打印部分内容
 
     if (data === "[DONE]") {
       await writer.write(encoder.encode("data: [DONE]\n\n"));
@@ -3684,9 +3935,44 @@ async function processGeminiSSELine(line, writer, encoder, delay, config) {
     }
 
     try {
+      // 处理可能的空数据
+      if (!data || data.trim() === "") {
+        console.log("收到空数据行，跳过处理");
+        return;
+      }
+      
       const geminiData = JSON.parse(data);
-      console.log("解析后的Gemini数据:", JSON.stringify(geminiData, null, 2));
+      
+      // 检查是否有错误字段
+      if (geminiData.error) {
+        console.error("Gemini响应中包含错误:", geminiData.error);
+        
+        // 将错误信息编码为OpenAI格式并发送给客户端
+        const errorResponse = {
+          id: `error-${Date.now()}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: "gemini",
+          choices: [{
+            index: 0,
+            delta: { content: `[Gemini API错误] ${geminiData.error.message || JSON.stringify(geminiData.error)}` },
+            finish_reason: "error"
+          }]
+        };
+        
+        await writer.write(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
+        return;
+      }
+      
+      // 提取真实的模型名称
+      let modelName = "gemini";
+      if (geminiData.modelId) {
+        modelName = geminiData.modelId;
+      } else if (geminiData.candidates && geminiData.candidates[0] && geminiData.candidates[0].modelId) {
+        modelName = geminiData.candidates[0].modelId;
+      }
 
+      // 检查是否有候选项
       if (geminiData.candidates && geminiData.candidates.length > 0) {
         const candidate = geminiData.candidates[0];
         const index = candidate.index || 0;
@@ -3698,6 +3984,12 @@ async function processGeminiSSELine(line, writer, encoder, delay, config) {
             .filter(part => part.text)
             .map(part => part.text)
             .join("");
+        } else if (candidate.content?.text) { 
+          // 兼容新版Gemini API可能直接返回text的情况
+          textContent = candidate.content.text;
+        } else if (candidate.text) {
+          // 兼容旧版API
+          textContent = candidate.text;
         }
 
         if (textContent) {
@@ -3706,7 +3998,7 @@ async function processGeminiSSELine(line, writer, encoder, delay, config) {
             id: `chatcmpl-${Date.now()}`,
             object: "chat.completion.chunk",
             created: Math.floor(Date.now() / 1000),
-            model: "gemini-pro",
+            model: modelName,
             choices: [{
               index,
               delta: {
@@ -3718,6 +4010,8 @@ async function processGeminiSSELine(line, writer, encoder, delay, config) {
 
           // 使用sendContentCharByChar函数处理流式输出
           await sendContentCharByChar(textContent, openAIFormat, writer, encoder, delay, false);
+        } else {
+          console.log("未从Gemini响应中提取到文本内容");
         }
 
         // 如果有完成原因，发送最终块
@@ -3733,26 +4027,27 @@ async function processGeminiSSELine(line, writer, encoder, delay, config) {
             id: `chatcmpl-${Date.now()}`,
             object: "chat.completion.chunk",
             created: Math.floor(Date.now() / 1000),
-            model: "gemini-pro",
+            model: modelName,
             choices: [{
               index,
               delta: {},
               finish_reason: reasonsMap[candidate.finishReason] || candidate.finishReason
             }]
           };
-
+          
           await writer.write(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
-          await writer.write(encoder.encode("data: [DONE]\n\n"));
         }
+      } else {
+        console.log("Gemini响应中没有候选项");
       }
-
     } catch (e) {
-      console.error("解析Gemini SSE出错:", e, "原始数据:", data);
+      console.error("解析Gemini响应出错:", e, "原始数据:", data.substring(0, 200));
+      // 如果解析失败，将原始数据传递出去，避免完全失败
       await writer.write(encoder.encode(`data: ${data}\n\n`));
     }
   } else {
-    console.log("非data行:", line);
-    await writer.write(encoder.encode(`${line}\n`));
+    // 对于非data行，记录但不发送
+    console.log("非data行:", line.substring(0, 50));
   }
 }
 
@@ -3835,19 +4130,32 @@ async function processAnthropicSSELine(line, writer, encoder, delay, config) {
 function adaptDelay(chunkSize, timeSinceLastChunk, config) {
   if (chunkSize <= 0) return config.minDelay;
   
+  // 确保配置值有效
+  const minDelay = Math.max(1, config.minDelay || 5);
+  const maxDelay = Math.max(minDelay, config.maxDelay || 40);
+  const adaptiveDelayFactor = Math.max(0, Math.min(2, config.adaptiveDelayFactor || 0.5));
+  
   // 块大小反比因子:块越大,字符间延迟越小
-  const sizeInverseFactor = Math.max(0.2, Math.min(2.0, 50 / chunkSize));
+  // 改进算法，使块大小影响更加平滑
+  const sizeInverseFactor = 1 + Math.log(1 + Math.min(chunkSize, 200)) / Math.log(20);
+  const normalizedSizeFactor = 1 / Math.max(0.5, Math.min(2.0, sizeInverseFactor));
   
   // 时间因子:接收间隔越长,延迟越大
-  const timeFactor = Math.max(0.5, Math.min(1.5, timeSinceLastChunk / 300));
+  // 限制时间范围，避免极端值
+  const normalizedTime = Math.min(2000, Math.max(50, timeSinceLastChunk));
+  const timeFactor = Math.sqrt(normalizedTime / 300);
   
   // 组合因子计算最终延迟
-  const adaptiveDelay = config.minDelay + 
-    (config.maxDelay - config.minDelay) * 
-    sizeInverseFactor * timeFactor * config.adaptiveDelayFactor;
+  const adaptiveDelay = minDelay + 
+    (maxDelay - minDelay) * 
+    normalizedSizeFactor * timeFactor * adaptiveDelayFactor;
   
-  // 确保延迟在允许范围内
-  return Math.min(config.maxDelay, Math.max(config.minDelay, adaptiveDelay));
+  // 确保延迟在允许范围内，并添加偏移以增加随机性
+  const baseDelay = Math.min(maxDelay, Math.max(minDelay, adaptiveDelay));
+  
+  // 添加轻微随机变化（±10%）以使输出更自然
+  const randomFactor = 0.9 + (Math.random() * 0.2);
+  return baseDelay * randomFactor;
 }
 
 // 逐字符发送内容
@@ -3935,4 +4243,775 @@ async function handleCheckSessionRequest(request, env) {
     status: 200,
     headers: { 'Content-Type': 'application/json' }
   });
+}
+
+// 获取OpenAI模型列表
+async function getOpenAIModels(request, config) {
+  try {
+    console.log("开始获取OpenAI模型列表...");
+    
+    // 如果有多个OpenAI端点配置，则从所有端点获取模型
+    if (config.openaiEndpoints && config.openaiEndpoints.length > 0) {
+      console.log(`使用多端点模式获取OpenAI模型，端点数量: ${config.openaiEndpoints.length}`);
+      
+      // 输出端点详情用于调试
+      config.openaiEndpoints.forEach((endpoint, index) => {
+        console.log(`端点 #${index+1}: ${endpoint.name || '未命名'}`);
+        console.log(`  URL: ${endpoint.url}`);
+        console.log(`  API密钥存在: ${!!endpoint.apiKey}`);
+        console.log(`  支持的模型数量: ${endpoint.models ? endpoint.models.length : '全部'}`);
+      });
+      
+      return await getOpenAIModelsFromMultipleEndpoints(config);
+    } else {
+      // 兼容旧版配置，使用默认端点
+      console.log("使用单端点模式获取OpenAI模型...");
+      
+      // 确保默认URL存在
+      if (!config.defaultUpstreamUrl) {
+        config.defaultUpstreamUrl = "https://api.openai.com";
+        console.log(`未配置默认URL，使用默认值: ${config.defaultUpstreamUrl}`);
+      }
+      
+      const upstreamUrlInfo = extractUpstreamUrl(request, config);
+      const outgoingApiKey = extractOutgoingApiKey(request, config);
+      
+      console.log(`上游URL信息:`, {
+        url: upstreamUrlInfo.url,
+        useNativeFetch: upstreamUrlInfo.useNativeFetch,
+        hasRestrictedModels: !!upstreamUrlInfo.restrictedModels
+      });
+      
+      // 如果没有API密钥,则跳过
+      if (!outgoingApiKey) {
+        console.log("没有找到有效的OpenAI API密钥，返回空列表");
+        return { object: "list", data: [] };
+      }
+      
+      // 使用URL构建请求
+      let url;
+      try {
+        // 确保URL格式正确
+        const baseUrl = upstreamUrlInfo.url.endsWith('/') 
+          ? upstreamUrlInfo.url.slice(0, -1) 
+          : upstreamUrlInfo.url;
+        
+        url = `${baseUrl}/v1/models`;
+        console.log(`构建的模型列表请求URL: ${url}`);
+      } catch (urlError) {
+        console.error("构建URL时出错:", urlError);
+        url = "https://api.openai.com/v1/models";
+        console.log(`回退到默认URL: ${url}`);
+      }
+      
+      const upstreamRequest = {
+        method: "GET",
+        headers: new Headers({
+          "Authorization": `Bearer ${outgoingApiKey}`,
+          "Content-Type": "application/json"
+        }),
+        url: url
+      };
+      
+      console.log(`发送模型列表请求到: ${upstreamRequest.url}`);
+      
+      let response;
+      try {
+        // 尝试使用nativeFetch发送请求
+        response = await nativeFetch(upstreamRequest, upstreamRequest.url);
+      } catch (fetchError) {
+        console.error(`nativeFetch失败: ${fetchError.message}`);
+        
+        // 尝试使用标准fetch
+        try {
+          console.log("尝试使用标准fetch...");
+          const fetchOptions = {
+            method: "GET",
+            headers: new Headers({
+              "Authorization": `Bearer ${outgoingApiKey}`,
+              "Content-Type": "application/json"
+            })
+          };
+          
+          response = await fetch(url, fetchOptions);
+        } catch (stdFetchError) {
+          console.error(`标准fetch也失败: ${stdFetchError.message}`);
+          throw new Error(`无法连接到OpenAI API: ${stdFetchError.message}`);
+        }
+      }
+      
+      console.log(`模型列表请求响应状态: ${response.status}`);
+      
+      if (!response.ok) {
+        console.error(`获取模型列表失败: ${response.status} ${response.statusText}`);
+        try {
+          const errorText = await response.clone().text();
+          console.error(`错误详情: ${errorText.substring(0, 200)}`);
+        } catch (e) {
+          console.error(`无法读取错误详情: ${e.message}`);
+        }
+        return { object: "list", data: [] };
+      }
+      
+      let models;
+      try {
+        models = await response.json();
+      } catch (jsonError) {
+        console.error(`解析响应JSON失败: ${jsonError.message}`);
+        try {
+          const text = await response.clone().text();
+          console.error(`响应内容: ${text.substring(0, 200)}...`);
+        } catch (e) {}
+        return { object: "list", data: [] };
+      }
+      
+      console.log(`成功获取到 ${models.data ? models.data.length : 0} 个OpenAI模型`);
+      
+      // 标准化模型数据，只保留必要字段
+      if (models && models.data && Array.isArray(models.data)) {
+        models.data = models.data.map(model => ({
+          id: model.id,
+          object: "model",
+          created: model.created || Math.floor(Date.now() / 1000),
+          owned_by: model.owned_by || "openai"
+        }));
+      }
+      
+      return models;
+    }
+  } catch (error) {
+    console.error("获取OpenAI模型列表时出错:", error);
+    throw error;  // 重新抛出异常以便上层函数捕获
+  }
+}
+
+// 解析请求体并检查是否是流式请求
+async function parseRequestBody(request) {
+  let requestBody = {};
+  let isStreamRequest = false;
+  
+  try {
+    // 只处理POST请求
+    if (request.method === 'POST') {
+      // 克隆请求以免影响原请求
+      const clonedRequest = request.clone();
+      
+      try {
+        // 解析JSON请求体
+        requestBody = await clonedRequest.json();
+        
+        // 检查是否请求流式输出
+        isStreamRequest = !!requestBody.stream;
+      } catch (e) {
+        console.error("解析请求体失败:", e);
+      }
+    }
+  } catch (e) {
+    console.error("处理请求体时发生错误:", e);
+  }
+  
+  return { requestBody, isStreamRequest };
+}
+
+// 检查是否是获取模型列表的请求
+function isModelsRequest(path) {
+  return path.endsWith('/models') || path.includes('/models?');
+}
+
+// 创建发送到上游API的请求
+function createUpstreamRequest(url, originalRequest, requestBody, apiKey) {
+  // 构建请求头
+  const headers = new Headers();
+  
+  // 复制所有原始请求头
+  try {
+    for (const [key, value] of originalRequest.headers) {
+      // 跳过一些特殊的请求头
+      if (!['host', 'connection', 'authorization'].includes(key.toLowerCase())) {
+        headers.set(key, value);
+      }
+    }
+  } catch (headerError) {
+    console.error("复制原始请求头时出错:", headerError);
+    
+    // 如果标准迭代失败，尝试其他方法
+    try {
+      if (originalRequest.headers.get && typeof originalRequest.headers.get === 'function') {
+        // 如果有get方法，可能还有keys方法
+        if (originalRequest.headers.keys && typeof originalRequest.headers.keys === 'function') {
+          const headerNames = Array.from(originalRequest.headers.keys());
+          for (const key of headerNames) {
+            if (!['host', 'connection', 'authorization'].includes(key.toLowerCase())) {
+              const value = originalRequest.headers.get(key);
+              if (value !== null && value !== undefined) {
+                headers.set(key, value);
+              }
+            }
+          }
+        }
+      } else if (typeof originalRequest.headers === 'object') {
+        // 尝试作为普通对象处理
+        for (const [key, value] of Object.entries(originalRequest.headers)) {
+          if (!['host', 'connection', 'authorization'].includes(key.toLowerCase())) {
+            headers.set(key, value);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("替代方法处理请求头也失败:", e);
+    }
+  }
+  
+  // 设置授权头
+  if (apiKey) {
+    headers.set('Authorization', `Bearer ${apiKey}`);
+  }
+  
+  // 设置内容类型
+  headers.set('Content-Type', 'application/json');
+  
+  // 构建新的请求
+  return {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(requestBody),
+    url: url
+  };
+}
+
+// 创建Anthropic请求
+async function createAnthropicRequest(request, requestBody, config) {
+  // 获取Anthropic API密钥
+  const apiKey = getAnthropicApiKey(request, config);
+  
+  // 构建请求头
+  const headers = new Headers();
+  headers.set('x-api-key', apiKey);
+  headers.set('anthropic-version', '2023-06-01');
+  headers.set('Content-Type', 'application/json');
+  
+  // 转换请求体格式为Anthropic格式
+  const anthropicBody = {
+    model: requestBody.model.replace(/^claude-/, ''),  // 移除前缀，如果有的话
+    prompt: `\n\nHuman: ${requestBody.messages.map(msg => msg.content).join('\n')}\n\nAssistant:`,
+    max_tokens_to_sample: requestBody.max_tokens || 4000,
+    temperature: requestBody.temperature || 0.7,
+    stream: requestBody.stream
+  };
+  
+  // 构建请求URL
+  const url = `${config.anthropicUpstreamUrl}/v1/complete`;
+  
+  // 返回请求配置
+  return {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(anthropicBody),
+    url,
+    useNativeFetch: config.anthropicUseNativeFetch // 使用配置中的原生Fetch选项
+  };
+}
+
+// 创建Gemini请求
+async function createGeminiRequest(request, requestBody, config) {
+  // 获取Gemini API密钥
+  const apiKey = getGeminiApiKey(request, config);
+  
+  // 从请求中提取模型名称
+  let modelName = requestBody.model || 'gemini-pro';
+  
+  // 标准化模型名称格式
+  if (!modelName.startsWith('gemini-')) {
+    modelName = 'gemini-' + modelName;
+  }
+  
+  // 确保URL格式正确，对于Gemini API，models/前缀是必需的
+  if (!modelName.startsWith('models/')) {
+    modelName = `models/${modelName}`;
+  }
+
+  console.log(`使用Gemini模型: ${modelName}, 流式请求: ${requestBody.stream ? '是' : '否'}`);
+  
+  // 处理消息，Gemini不支持system角色
+  let processedMessages = [];
+  let systemInstruction = null;
+  
+  // 收集所有system消息并将它们处理为systemInstruction
+  for (const msg of requestBody.messages) {
+    if (msg.role === 'system') {
+      // 创建系统指令，使用Gemini API预期的格式
+      systemInstruction = {
+        parts: [{ text: msg.content }]
+      };
+    } else {
+      processedMessages.push(msg);
+    }
+  }
+  
+  // 如果没有非系统消息，添加一个默认的用户消息
+  if (processedMessages.length === 0) {
+    processedMessages.push({
+      role: 'user',
+      content: 'Hello'
+    });
+  }
+  
+  console.log(`处理后的消息数: ${processedMessages.length}`);
+  
+  // 构建对话格式
+  const contents = processedMessages.map(msg => ({
+    role: msg.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: msg.content }]
+  }));
+  
+  // 设置请求头，包括必要的API客户端标识
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-goog-api-key': apiKey,
+    'x-goog-api-client': 'genai-js/0.1.0'
+  };
+  
+  // 构建基础URL，确保没有末尾斜杠
+  let baseUrl = config.geminiUpstreamUrl;
+  if (baseUrl.endsWith('/')) {
+    baseUrl = baseUrl.slice(0, -1);
+  }
+  
+  // 根据是否为流式请求构建不同的URL和请求体
+  const isStreamRequest = requestBody.stream === true;
+  const TASK = isStreamRequest ? "streamGenerateContent" : "generateContent";
+  let url = `${baseUrl}/v1beta/${modelName}:${TASK}`;
+  
+  // 为流式请求添加SSE参数
+  if (isStreamRequest) {
+    url += "?alt=sse";
+  }
+  
+  // 构建请求体
+  const geminiBody = {
+    contents: contents,
+    generationConfig: {
+      temperature: requestBody.temperature || 0.7,
+      maxOutputTokens: requestBody.max_tokens || 2048,
+      topP: requestBody.top_p || 0.95,
+      topK: requestBody.top_k || 40
+    },
+    // 安全设置，防止模型产生有害内容
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
+    ]
+  };
+  
+  // 如果有系统指令，添加到请求体
+  if (systemInstruction) {
+    geminiBody.systemInstruction = systemInstruction;
+  }
+  
+  // 打印请求信息便于调试
+  console.log(`Gemini请求URL: ${url}`);
+  console.log(`Gemini请求体: ${JSON.stringify(geminiBody).substring(0, 200)}...`);
+  
+  // 返回请求配置
+  return {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(geminiBody),
+    url,
+    useNativeFetch: config.geminiUseNativeFetch // 使用配置中的原生Fetch选项
+  };
+}
+
+// 将非OpenAI API的响应转换为OpenAI格式
+async function convertToOpenAIResponse(response, apiType, config) {
+  try {
+    // 获取响应体
+    const responseBody = await response.json();
+    
+    // 根据API类型进行转换
+    let convertedBody;
+    
+    if (apiType === 'gemini') {
+      convertedBody = convertGeminiToOpenAIFormat(responseBody);
+    } else if (apiType === 'anthropic') {
+      convertedBody = convertAnthropicToOpenAIFormat(responseBody);
+    } else {
+      // 如果是未知API类型，返回原始响应
+      return new Response(JSON.stringify(responseBody), {
+        status: response.status,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    }
+    
+    // 返回转换后的响应
+    return new Response(JSON.stringify(convertedBody), {
+      status: response.status,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  } catch (error) {
+    console.error("convertToOpenAIResponse error:", error);
+    // 返回友好的错误响应
+    return new Response(JSON.stringify({
+      error: {
+        message: "Error converting response: " + error.message,
+        type: "conversion_error",
+        code: 500
+      }
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  }
+}
+
+// 安全地将Headers对象转换为字符串
+function safeHeadersToString(headers) {
+  if (!headers) return '';
+  
+  try {
+    // 标准方法
+    return Array.from(headers.entries())
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\r\n");
+  } catch (e) {
+    console.error("使用entries方法转换headers失败，尝试替代方法", e);
+    
+    try {
+      // 替代方法1: 使用keys和get
+      if (headers.keys && typeof headers.keys === 'function' &&
+          headers.get && typeof headers.get === 'function') {
+        return Array.from(headers.keys())
+          .map(k => `${k}: ${headers.get(k)}`)
+          .join("\r\n");
+      }
+      
+      // 替代方法2: 如果是普通对象
+      if (typeof headers === 'object') {
+        return Object.entries(headers)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\r\n");
+      }
+      
+      console.error("无法转换headers为字符串");
+      return "Host: unknown";
+    } catch (e2) {
+      console.error("所有转换headers的方法都失败", e2);
+      return "Host: unknown";
+    }
+  }
+}
+
+// 获取Gemini API模型列表
+async function getGeminiModels(request, config) {
+  try {
+    console.log("开始获取Gemini模型列表...");
+    
+    // 获取Gemini API密钥
+    const apiKey = getGeminiApiKey(request, config);
+    console.log(`Gemini API密钥存在: ${!!apiKey}`);
+    
+    if (!apiKey) {
+      console.log("没有找到有效的Gemini API密钥，返回空列表");
+      return { object: "list", data: [] };
+    }
+    
+    // 尝试从Gemini API实时获取模型列表
+    try {
+      console.log("尝试从Gemini API实时获取模型列表...");
+      
+      // 构建Gemini模型列表请求
+      const baseUrl = config.geminiUpstreamUrl || "https://generativelanguage.googleapis.com";
+      
+      // 注意：我们不再将API密钥作为URL参数，而是放在请求头中
+      const modelsUrl = `${baseUrl}/v1beta/models`;
+      
+      console.log(`发送请求到: ${modelsUrl}`);
+      
+      // 发送请求获取模型列表
+      let modelsResponse;
+      try {
+        // 尝试使用标准fetch，将API密钥放在请求头中
+        modelsResponse = await fetch(modelsUrl, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey  // 正确的请求头格式
+          }
+        });
+      } catch (fetchError) {
+        console.error("标准fetch失败，尝试使用nativeFetch:", fetchError);
+        // 如果标准fetch失败，使用nativeFetch
+        const request = {
+          method: "GET",
+          headers: new Headers({
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey  // 正确的请求头格式
+          }),
+          url: modelsUrl
+        };
+        modelsResponse = await nativeFetch(request, modelsUrl);
+      }
+      
+      console.log(`模型列表响应状态: ${modelsResponse.status}`);
+      
+      // 处理响应
+      if (modelsResponse.ok) {
+        const responseData = await modelsResponse.json();
+        
+        // 检查是否有模型数据
+        if (responseData && responseData.models && Array.isArray(responseData.models)) {
+          console.log(`成功获取到 ${responseData.models.length} 个Gemini模型`);
+          
+          // 将Gemini API模型格式转换为标准OpenAI格式 (只保留必要字段)
+          const geminiModels = responseData.models.map(model => ({
+            id: model.name.replace('models/', ''),
+            object: "model",
+            created: Math.floor(Date.now() / 1000),
+            owned_by: "google"
+            // 移除额外字段以符合OpenAI格式标准
+          }));
+          
+          console.log(`返回 ${geminiModels.length} 个实时获取的Gemini模型`);
+          
+          return {
+            object: "list",
+            data: geminiModels
+          };
+        }
+      } else {
+        // 请求失败，记录错误
+        console.error(`获取Gemini模型列表失败: ${modelsResponse.status}`);
+        try {
+          const errorData = await modelsResponse.text();
+          console.error(`错误详情: ${errorData.substring(0, 200)}`);
+        } catch (e) {
+          console.error(`无法读取错误详情: ${e.message}`);
+        }
+      }
+    } catch (apiError) {
+      console.error("从Gemini API获取模型列表失败:", apiError);
+    }
+    
+    // 如果实时获取失败，回退到预定义列表
+    console.log("回退到预定义的Gemini模型列表");
+    
+    // 预定义的Gemini模型列表 (符合标准OpenAI格式)
+    const geminiModels = [
+      {
+        id: "gemini-2.0-flash",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "google"
+      },
+      {
+        id: "gemini-2.0-pro-exp",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "google"
+      },
+      {
+        id: "gemini-2.0-flash-lite",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "google"
+      },
+      {
+        id: "gemini-2.0-flash-thinking-exp",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "google"
+      },
+      {
+        id: "gemini-1.5-pro",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "google"
+      },
+      {
+        id: "gemini-1.5-flash",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "google"
+      },
+      {
+        id: "gemini-1.5-flash-8b",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "google"
+      }
+    ];
+    
+    console.log(`返回 ${geminiModels.length} 个预定义的Gemini模型`);
+    
+    return {
+      object: "list",
+      data: geminiModels
+    };
+  } catch (error) {
+    console.error("获取Gemini模型列表时出错:", error);
+    return { object: "list", data: [] };
+  }
+}
+
+// 获取Anthropic API模型列表
+async function getAnthropicModels(request, config) {
+  try {
+    console.log("开始获取Anthropic模型列表...");
+    
+    // 获取Anthropic API密钥
+    const apiKey = getAnthropicApiKey(request, config);
+    console.log(`Anthropic API密钥存在: ${!!apiKey}`);
+    
+    if (!apiKey) {
+      console.log("没有找到有效的Anthropic API密钥，返回空列表");
+      return { object: "list", data: [] };
+    }
+    
+    // 尝试从Anthropic API实时获取模型列表
+    try {
+      console.log("尝试从Anthropic API实时获取模型列表...");
+      
+      // 构建Anthropic模型列表请求
+      const baseUrl = config.anthropicUpstreamUrl || "https://api.anthropic.com";
+      const url = `${baseUrl}/v1/models`;
+      
+      console.log(`发送请求到: ${url}`);
+      
+      // 发送请求获取模型列表
+      let modelsResponse;
+      try {
+        // 尝试使用标准fetch
+        modelsResponse = await fetch(url, {
+          method: "GET",
+          headers: {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json"
+          }
+        });
+      } catch (fetchError) {
+        console.error("标准fetch失败，尝试使用nativeFetch:", fetchError);
+        // 如果标准fetch失败，使用nativeFetch
+        const request = {
+          method: "GET",
+          headers: new Headers({
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json"
+          }),
+          url: url
+        };
+        modelsResponse = await nativeFetch(request, url);
+      }
+      
+      console.log(`模型列表响应状态: ${modelsResponse.status}`);
+      
+      // 处理响应
+      if (modelsResponse.ok) {
+        const responseData = await modelsResponse.json();
+        
+        // 检查是否有模型数据
+        if (responseData && responseData.models && Array.isArray(responseData.models)) {
+          console.log(`成功获取到 ${responseData.models.length} 个Anthropic模型`);
+          
+          // 将Anthropic API模型格式转换为标准OpenAI格式 (只保留必要字段)
+          const anthropicModels = responseData.models.map(model => ({
+            id: model.id,
+            object: "model",
+            created: Math.floor(Date.now() / 1000),
+            owned_by: "anthropic"
+            // 移除额外字段以符合OpenAI格式标准
+          }));
+          
+          console.log(`返回 ${anthropicModels.length} 个实时获取的Anthropic模型`);
+          
+          return {
+            object: "list",
+            data: anthropicModels
+          };
+        }
+      } else {
+        // 请求失败，记录错误
+        console.error(`获取Anthropic模型列表失败: ${modelsResponse.status}`);
+        try {
+          const errorData = await modelsResponse.text();
+          console.error(`错误详情: ${errorData.substring(0, 200)}`);
+        } catch (e) {
+          console.error(`无法读取错误详情: ${e.message}`);
+        }
+      }
+    } catch (apiError) {
+      console.error("从Anthropic API获取模型列表失败:", apiError);
+    }
+    
+    // 如果实时获取失败，回退到预定义列表
+    console.log("回退到预定义的Anthropic模型列表");
+    
+    // 预定义的Anthropic模型列表 (符合标准OpenAI格式)
+    const anthropicModels = [
+      {
+        id: "claude-3-7-sonnet-20250219",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "anthropic"
+      },
+      {
+        id: "claude-3-5-sonnet-20241022",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "anthropic"
+      },
+      {
+        id: "claude-3-5-haiku-20241022",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "anthropic"
+      },
+      {
+        id: "claude-3-5-sonnet-20240620",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "anthropic"
+      },
+      {
+        id: "claude-3-opus-20240229",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "anthropic"
+      },
+      {
+        id: "claude-3-sonnet-20240229",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "anthropic"
+      },
+      {
+        id: "claude-3-haiku-20240307",
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "anthropic"
+      }
+    ];
+    
+    console.log(`返回 ${anthropicModels.length} 个预定义的Anthropic模型`);
+    
+    return {
+      object: "list",
+      data: anthropicModels
+    };
+  } catch (error) {
+    console.error("获取Anthropic模型列表时出错:", error);
+    return { object: "list", data: [] };
+  }
 }
