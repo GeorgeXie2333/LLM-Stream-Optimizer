@@ -777,29 +777,98 @@ async function saveConfigToKV(env, config) {
   }
 
   try {
-    // 并行保存所有配置值
-    await Promise.all([
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.UPSTREAM_URL, config.defaultUpstreamUrl || ""),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.OUTGOING_API_KEY, config.defaultOutgoingApiKey || ""),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.OPENAI_ENDPOINTS, JSON.stringify(config.openaiEndpoints || [])),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_URL, config.geminiUpstreamUrl || ""),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_API_KEY, config.geminiApiKey || ""),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_USE_NATIVE_FETCH, (config.geminiUseNativeFetch !== false).toString()),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_URL, config.anthropicUpstreamUrl || ""),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_API_KEY, config.anthropicApiKey || ""),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_USE_NATIVE_FETCH, (config.anthropicUseNativeFetch !== false).toString()),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.PROXY_API_KEY, config.proxyApiKey || ""),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.MIN_DELAY, config.minDelay.toString()),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.MAX_DELAY, config.maxDelay.toString()),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.ADAPTIVE_DELAY_FACTOR, config.adaptiveDelayFactor.toString()),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.CHUNK_BUFFER_SIZE, config.chunkBufferSize.toString()),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.DISABLE_OPTIMIZATION_MODELS, JSON.stringify(config.disableOptimizationModels || [])),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.MIN_CONTENT_LENGTH_FOR_FAST_OUTPUT, config.minContentLengthForFastOutput.toString()),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.FAST_OUTPUT_DELAY, config.fastOutputDelay.toString()),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.FINAL_LOW_DELAY, config.finalLowDelay.toString())
-    ]);
+    // 先读取当前KV中的配置
+    const currentConfig = await loadConfigFromKV(env);
     
-    return { success: true, message: "配置保存成功" };
+    // 准备需要更新的配置列表
+    const updatePromises = [];
+    
+    // 比较并只更新有变化的配置项
+    if (config.defaultUpstreamUrl !== currentConfig.defaultUpstreamUrl) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.UPSTREAM_URL, config.defaultUpstreamUrl || ""));
+    }
+    
+    if (config.defaultOutgoingApiKey !== currentConfig.defaultOutgoingApiKey) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.OUTGOING_API_KEY, config.defaultOutgoingApiKey || ""));
+    }
+    
+    // 对于JSON数据，需要特殊处理
+    const newEndpointsJSON = JSON.stringify(config.openaiEndpoints || []);
+    const currentEndpointsJSON = JSON.stringify(currentConfig.openaiEndpoints || []);
+    if (newEndpointsJSON !== currentEndpointsJSON) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.OPENAI_ENDPOINTS, newEndpointsJSON));
+    }
+    
+    if (config.geminiUpstreamUrl !== currentConfig.geminiUpstreamUrl) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_URL, config.geminiUpstreamUrl || ""));
+    }
+    
+    if (config.geminiApiKey !== currentConfig.geminiApiKey) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_API_KEY, config.geminiApiKey || ""));
+    }
+    
+    if ((config.geminiUseNativeFetch !== false).toString() !== (currentConfig.geminiUseNativeFetch !== false).toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_USE_NATIVE_FETCH, (config.geminiUseNativeFetch !== false).toString()));
+    }
+    
+    if (config.anthropicUpstreamUrl !== currentConfig.anthropicUpstreamUrl) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_URL, config.anthropicUpstreamUrl || ""));
+    }
+    
+    if (config.anthropicApiKey !== currentConfig.anthropicApiKey) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_API_KEY, config.anthropicApiKey || ""));
+    }
+    
+    if ((config.anthropicUseNativeFetch !== false).toString() !== (currentConfig.anthropicUseNativeFetch !== false).toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_USE_NATIVE_FETCH, (config.anthropicUseNativeFetch !== false).toString()));
+    }
+    
+    if (config.proxyApiKey !== currentConfig.proxyApiKey) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.PROXY_API_KEY, config.proxyApiKey || ""));
+    }
+    
+    if (config.minDelay.toString() !== currentConfig.minDelay.toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.MIN_DELAY, config.minDelay.toString()));
+    }
+    
+    if (config.maxDelay.toString() !== currentConfig.maxDelay.toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.MAX_DELAY, config.maxDelay.toString()));
+    }
+    
+    if (config.adaptiveDelayFactor.toString() !== currentConfig.adaptiveDelayFactor.toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.ADAPTIVE_DELAY_FACTOR, config.adaptiveDelayFactor.toString()));
+    }
+    
+    if (config.chunkBufferSize.toString() !== currentConfig.chunkBufferSize.toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.CHUNK_BUFFER_SIZE, config.chunkBufferSize.toString()));
+    }
+    
+    // 对于数组，需要特殊处理
+    const newDisableModelsJSON = JSON.stringify(config.disableOptimizationModels || []);
+    const currentDisableModelsJSON = JSON.stringify(currentConfig.disableOptimizationModels || []);
+    if (newDisableModelsJSON !== currentDisableModelsJSON) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.DISABLE_OPTIMIZATION_MODELS, newDisableModelsJSON));
+    }
+    
+    if (config.minContentLengthForFastOutput.toString() !== currentConfig.minContentLengthForFastOutput.toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.MIN_CONTENT_LENGTH_FOR_FAST_OUTPUT, config.minContentLengthForFastOutput.toString()));
+    }
+    
+    if (config.fastOutputDelay.toString() !== currentConfig.fastOutputDelay.toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.FAST_OUTPUT_DELAY, config.fastOutputDelay.toString()));
+    }
+    
+    if (config.finalLowDelay.toString() !== currentConfig.finalLowDelay.toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.FINAL_LOW_DELAY, config.finalLowDelay.toString()));
+    }
+    
+    // 执行所有需要更新的配置项
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises);
+      return { success: true, message: `配置保存成功，共更新了 ${updatePromises.length} 项设置` };
+    } else {
+      return { success: true, message: "配置无变化，无需更新" };
+    }
   } catch (error) {
     console.error("保存配置到KV时出错:", error);
     return { success: false, message: `配置保存失败: ${error.message}` };
