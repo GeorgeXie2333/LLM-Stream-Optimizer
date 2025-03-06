@@ -7,6 +7,15 @@
  * 美观的Web管理界面
  */
 
+// 生成UUID的函数，用于唯一标识端点
+function generateUUID() {
+  // 简化版UUID实现
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 // KV配置键名
 const KV_CONFIG_KEYS = {
   UPSTREAM_URL: "upstream_url",
@@ -696,10 +705,11 @@ async function loadConfigFromKV(env) {
     // 如果没有配置任何多端点，但配置了默认端点和API密钥，则添加默认端点
     if (config.openaiEndpoints.length === 0 && config.defaultUpstreamUrl && config.defaultOutgoingApiKey) {
       config.openaiEndpoints.push({
-        name: "默认",
+        id: generateUUID(), // 添加唯一ID
+        name: "默认端点",
         url: config.defaultUpstreamUrl,
         apiKey: config.defaultOutgoingApiKey,
-        models: [] // 空数组表示支持所有模型
+        models: ["gpt-3.5-turbo", "gpt-4"]
       });
     }
     
@@ -1125,8 +1135,17 @@ async function handleConfigApiRequest(request, env) {
           // 如果API密钥被屏蔽了，尝试从现有配置中找到对应的端点
           if (endpoint.apiKey && endpoint.apiKey.includes('*')) {
             // 尝试在现有配置中找到匹配的端点
-            const existingEndpoint = currentConfig.openaiEndpoints?.find(e => 
-              e.name === endpoint.name && e.url === endpoint.url);
+            // 优先使用ID匹配，如果没有ID或找不到再使用名称和URL匹配
+            let existingEndpoint;
+            if (endpoint.id) {
+              existingEndpoint = currentConfig.openaiEndpoints?.find(e => e.id === endpoint.id);
+            }
+            
+            // 如果没有通过ID找到，则通过名称和URL匹配
+            if (!existingEndpoint) {
+              existingEndpoint = currentConfig.openaiEndpoints?.find(e => 
+                e.name === endpoint.name && e.url === endpoint.url);
+            }
             
             // 如果找到匹配的端点，使用现有的API密钥
             if (existingEndpoint) {
@@ -2615,6 +2634,7 @@ function serveDashboardPage() {
             
             if (url && apiKey) {
               endpoints.push({
+                id: id, // 保存端点ID
                 name: name,
                 url: url,
                 apiKey: apiKey,
@@ -2643,13 +2663,22 @@ function serveDashboardPage() {
           }
         }
         
+        // 添加UUID生成函数，用于替代Date.now()
+        function generateUUID() {
+          // 简化版UUID实现
+          return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+          });
+        }
+        
         // 添加OpenAI端点表单
         function addOpenAIEndpointForm(endpoint) {
           // 默认值处理
           endpoint = endpoint || null;
           
           var container = document.getElementById('openaiEndpointsContainer');
-          var id = Date.now(); // 使用时间戳作为唯一ID
+          var id = endpoint && endpoint.id ? endpoint.id : generateUUID(); // 使用UUID作为唯一ID
           
           // 使用字符串拼接而不是模板字符串，避免语法解析问题
           var endpointHtml = 
