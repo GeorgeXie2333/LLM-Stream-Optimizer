@@ -26,7 +26,6 @@ const KV_CONFIG_KEYS = {
   CHUNK_BUFFER_SIZE: "chunk_buffer_size",
   DISABLE_OPTIMIZATION_MODELS: "disable_optimization_models",
   // 新增的流式优化参数
-  ENDING_DETECTION_SENSITIVITY: "ending_detection_sensitivity",
   MIN_CONTENT_LENGTH_FOR_FAST_OUTPUT: "min_content_length_for_fast_output",
   FAST_OUTPUT_DELAY: "fast_output_delay",
   FINAL_LOW_DELAY: "final_low_delay"
@@ -35,15 +34,14 @@ const KV_CONFIG_KEYS = {
 // 默认配置
 const DEFAULT_CONFIG = {
   // 字符间延迟参数
-  minDelay: 4,              // 最小延迟(毫秒)
-  maxDelay: 30,             // 最大延迟(毫秒)
+  minDelay: 5,              // 最小延迟(毫秒)
+  maxDelay: 40,             // 最大延迟(毫秒)
   adaptiveDelayFactor: 0.5, // 自适应延迟因子
   chunkBufferSize: 10,       // 计算平均响应大小的缓冲区大小
 
   // 新的流优化参数
-  endingDetectionSensitivity: 2, // 检测流结束的敏感度
-  minContentLengthForFastOutput: 1000, // 内容长度超过此值时启用快速输出
-  fastOutputDelay: 1, // 快速输出时的固定延迟
+  minContentLengthForFastOutput: 10000, // 内容长度超过此值时启用快速输出
+  fastOutputDelay: 3, // 快速输出时的固定延迟
   finalLowDelay: 1, // 模型完成响应后的低延迟
 
   // OpenAI多端点配置
@@ -52,14 +50,8 @@ const DEFAULT_CONFIG = {
 
 // 预定义模型前缀映射到API类型
 const MODEL_PREFIX_MAP = {
-  'claude': 'anthropic',
-  'gemini': 'gemini',
-  'gemini-': 'gemini',  // 兼容以gemini-开头的模型名称
-  'gemini-pro': 'gemini',
-  'gemini-flash': 'gemini',
-  'gemini-1.0': 'gemini',
-  'gemini-1.5': 'gemini',
-  'gemini-2.0': 'gemini'
+  'claude-': 'anthropic',
+  'gemini-': 'gemini'
 };
 
 // 导入Cloudflare Sockets API
@@ -669,9 +661,6 @@ async function loadConfigFromKV(env) {
           case "DISABLE_OPTIMIZATION_MODELS":
             config.disableOptimizationModels = JSON.parse(value);
             break;
-          case "ENDING_DETECTION_SENSITIVITY":
-            config.endingDetectionSensitivity = parseInt(value) || DEFAULT_CONFIG.endingDetectionSensitivity;
-            break;
           case "MIN_CONTENT_LENGTH_FOR_FAST_OUTPUT":
             config.minContentLengthForFastOutput = parseInt(value) || DEFAULT_CONFIG.minContentLengthForFastOutput;
             break;
@@ -805,7 +794,6 @@ async function saveConfigToKV(env, config) {
       env.CONFIG_KV.put(KV_CONFIG_KEYS.ADAPTIVE_DELAY_FACTOR, config.adaptiveDelayFactor.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.CHUNK_BUFFER_SIZE, config.chunkBufferSize.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.DISABLE_OPTIMIZATION_MODELS, JSON.stringify(config.disableOptimizationModels || [])),
-      env.CONFIG_KV.put(KV_CONFIG_KEYS.ENDING_DETECTION_SENSITIVITY, config.endingDetectionSensitivity.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.MIN_CONTENT_LENGTH_FOR_FAST_OUTPUT, config.minContentLengthForFastOutput.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.FAST_OUTPUT_DELAY, config.fastOutputDelay.toString()),
       env.CONFIG_KV.put(KV_CONFIG_KEYS.FINAL_LOW_DELAY, config.finalLowDelay.toString())
@@ -1013,7 +1001,6 @@ async function handleConfigApiRequest(request, env) {
         adaptiveDelayFactor: config.adaptiveDelayFactor,
         chunkBufferSize: config.chunkBufferSize,
         disableOptimizationModels: config.disableOptimizationModels || [],
-        endingDetectionSensitivity: config.endingDetectionSensitivity,
         minContentLengthForFastOutput: config.minContentLengthForFastOutput,
         fastOutputDelay: config.fastOutputDelay,
         finalLowDelay: config.finalLowDelay
@@ -1042,7 +1029,6 @@ async function handleConfigApiRequest(request, env) {
         maxDelay: parseInt(body.maxDelay) || currentConfig.maxDelay,
         adaptiveDelayFactor: parseFloat(body.adaptiveDelayFactor) || currentConfig.adaptiveDelayFactor,
         chunkBufferSize: parseInt(body.chunkBufferSize) || currentConfig.chunkBufferSize,
-        endingDetectionSensitivity: parseInt(body.endingDetectionSensitivity) || currentConfig.endingDetectionSensitivity,
         minContentLengthForFastOutput: parseInt(body.minContentLengthForFastOutput) || currentConfig.minContentLengthForFastOutput,
         fastOutputDelay: parseInt(body.fastOutputDelay) || currentConfig.fastOutputDelay,
         finalLowDelay: parseInt(body.finalLowDelay) || currentConfig.finalLowDelay
@@ -2221,36 +2207,30 @@ function serveDashboardPage() {
                 
                 <div class="row">
                   <div class="col-md-6 mb-4">
-                    <label for="endingDetectionSensitivity" class="form-label">结束检测敏感度</label>
-                    <input type="number" class="form-control" id="endingDetectionSensitivity" min="1" max="10" step="1">
-                    <div class="form-text">检测流结束的敏感度，值越小越容易触发加速</div>
-                  </div>
-                  
-                  <div class="col-md-6 mb-4">
                     <label for="minContentLengthForFastOutput" class="form-label">快速输出阈值(字符)</label>
                     <input type="number" class="form-control" id="minContentLengthForFastOutput" min="100" max="10000" step="100">
                     <div class="form-text">内容长度超过此值时启用快速输出</div>
                   </div>
-                </div>
                 
-                <div class="row">
                   <div class="col-md-6 mb-4">
                     <label for="fastOutputDelay" class="form-label">快速输出延迟(毫秒)</label>
                     <input type="number" class="form-control" id="fastOutputDelay" min="0" max="20" step="1">
                     <div class="form-text">快速输出时的固定延迟，值越小输出越快</div>
                   </div>
-                  
+                </div>
+
+                <div class="row">
                   <div class="col-md-6 mb-4">
                     <label for="finalLowDelay" class="form-label">结束阶段延迟(毫秒)</label>
                     <input type="number" class="form-control" id="finalLowDelay" min="0" max="20" step="1">
                     <div class="form-text">模型完成响应后的低延迟，值越小结束越快</div>
                   </div>
-                </div>
                 
-                <div class="mb-4">
-                  <label for="disableOptimizationModels" class="form-label">禁用流式优化的模型</label>
-                  <input type="text" class="form-control" id="disableOptimizationModels" placeholder="gpt-4o,claude-3-opus">
-                  <div class="form-text">指定不需要流式优化处理的模型，多个模型用英文逗号分隔。这些模型的响应将直接传递，不经过字符优化。适用于本身响应块已经很小的模型。</div>
+                  <div class="col-md-6 mb-4">
+                    <label for="disableOptimizationModels" class="form-label">禁用流式优化的模型</label>
+                    <input type="text" class="form-control" id="disableOptimizationModels" placeholder="gpt-4o,claude-3-opus">
+                    <div class="form-text">指定不需要流式优化处理的模型，多个模型用英文逗号分隔。</div>
+                  </div>
                 </div>
                 
                 <div class="form-footer">
@@ -2360,8 +2340,7 @@ function serveDashboardPage() {
               document.getElementById('chunkBufferSize').value = config.chunkBufferSize || 8;
               
               // 新增的流式优化参数
-              document.getElementById('endingDetectionSensitivity').value = config.endingDetectionSensitivity || 3;
-              document.getElementById('minContentLengthForFastOutput').value = config.minContentLengthForFastOutput || 1000;
+              document.getElementById('minContentLengthForFastOutput').value = config.minContentLengthForFastOutput || 10000;
               document.getElementById('fastOutputDelay').value = config.fastOutputDelay || 1;
               document.getElementById('finalLowDelay').value = config.finalLowDelay || 1;
               
@@ -2468,7 +2447,6 @@ function serveDashboardPage() {
             chunkBufferSize: document.getElementById('chunkBufferSize').value,
             
             // 新增的流式优化参数
-            endingDetectionSensitivity: document.getElementById('endingDetectionSensitivity').value,
             minContentLengthForFastOutput: document.getElementById('minContentLengthForFastOutput').value,
             fastOutputDelay: document.getElementById('fastOutputDelay').value,
             finalLowDelay: document.getElementById('finalLowDelay').value,
@@ -4083,9 +4061,10 @@ async function streamProcessor(inputStream, outputStream, apiType, config, updat
   
   // 添加用于监测流结束信号的变量
   let isStreamEnding = false;
-  let endingSignalCount = 0;
   let noContentCount = 0;
   let totalContentReceived = 0;
+  // 添加变量来跟踪最大单个块大小
+  let maxSingleChunkSize = 0;
   
   // 添加快速输出模式标志
   let fastOutputMode = false;
@@ -4134,34 +4113,24 @@ async function streamProcessor(inputStream, outputStream, apiType, config, updat
           recentChunkSizes.shift();
         }
         
-        // 记录总接收内容大小
+        // 更新最大单个块大小和总接收内容
+        maxSingleChunkSize = Math.max(maxSingleChunkSize, value.length);
         totalContentReceived += value.length;
         
-        // 检查是否应该启用快速输出模式
+        // 检查是否应该启用快速输出模式 - 基于单个块的大小判断
         if (!fastOutputMode && config.minContentLengthForFastOutput && 
-            totalContentReceived > config.minContentLengthForFastOutput) {
-          console.log("启用快速输出模式，内容长度已超过阈值:", totalContentReceived);
+            maxSingleChunkSize > config.minContentLengthForFastOutput) {
+          console.log("启用快速输出模式，单个响应块大小已超过阈值:", maxSingleChunkSize);
           fastOutputMode = true;
-        }
-        
-        // 检测是否接近流结束的标志
-        // 1. 收到极小的chunk可能意味着接近结束
-        if (contentReceived && value.length < 10) {
-          endingSignalCount++;
-        } else {
-          endingSignalCount = Math.max(0, endingSignalCount - 1);
         }
         
         // 计算新的延迟
         const avgChunkSize = recentChunkSizes.reduce((a, b) => a + b, 0) / recentChunkSizes.length;
-        // 检查是否满足结束条件
-        const endingDetectionSensitivity = config.endingDetectionSensitivity || 3;
-        isStreamEnding = endingSignalCount >= endingDetectionSensitivity;
         
         // 根据不同条件决定当前延迟
         if (fastOutputMode && config.fastOutputDelay !== undefined) {
           // 快速输出模式
-          currentDelay = Math.max(1, config.fastOutputDelay);
+          currentDelay = Math.max(config.minDelay || 5, config.fastOutputDelay);
         } else {
           // 正常延迟计算
           currentDelay = adaptDelay(avgChunkSize, timeSinceLastChunk, config, isStreamEnding);
@@ -4186,17 +4155,44 @@ async function streamProcessor(inputStream, outputStream, apiType, config, updat
             }
           }
           
-          // 检查每行是否包含接近结束的特定标志 (每个API类型可能不同)
-          let hasEndingContent = false;
-          for (const line of lines) {
-            if (line.includes('"finish_reason"') || line.includes('"stop_reason"')) {
-              hasEndingContent = true;
-              break;
+          // 检查每行是否包含模型原生的结束标志
+          if (!isStreamEnding) { // 只有在尚未检测到结束标志时才检查
+            for (const line of lines) {
+              try {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6).trim();
+                  // 确保是JSON格式并包含结束标志
+                  if (data && data !== "[DONE]") {
+                    try {
+                      const jsonData = JSON.parse(data);
+                      // 检查OpenAI格式的结束标志
+                      if (jsonData.choices && jsonData.choices.length > 0) {
+                        const choice = jsonData.choices[0];
+                        // 正确检测finish_reason是否存在且有值
+                        if (choice.finish_reason || 
+                            (choice.delta && choice.delta.finish_reason) ||
+                            choice.stop_reason || 
+                            choice.finishReason || 
+                            jsonData.message_stop) {
+                          isStreamEnding = true;
+                          console.log("检测到模型输出完成标志:", JSON.stringify(jsonData));
+                          break;
+                        }
+                      }
+                    } catch (e) {
+                      // JSON解析错误，可能不是有效的JSON或者是[DONE]
+                      if (data === "[DONE]") {
+                        isStreamEnding = true;
+                        console.log("检测到[DONE]结束标志");
+                        break;
+                      }
+                    }
+                  }
+                }
+              } catch (lineError) {
+                console.error("检测结束标志时出错:", lineError);
+              }
             }
-          }
-          if (hasEndingContent) {
-            isStreamEnding = true;
-            console.log("检测到模型输出完成标志");
           }
           
           // 处理每一行
@@ -4536,7 +4532,7 @@ function adaptDelay(chunkSize, timeSinceLastChunk, config, isStreamEnding) {
   
   // 流结束时使用finalLowDelay
   if (isStreamEnding && config.finalLowDelay !== undefined) {
-    return Math.max(1, config.finalLowDelay);
+    return Math.max(config.minDelay, config.finalLowDelay);
   }
   
   // 确保配置值有效
@@ -4603,7 +4599,7 @@ async function sendContentCharByChar(content, originalJson, writer, encoder, del
     if (i < content.length - 1 && delay > 0) {
       // 优化：如果是流结束且配置了finalLowDelay，使用finalLowDelay
       const actualDelay = isStreamEnding && config && config.finalLowDelay !== undefined
-        ? Math.max(1, config.finalLowDelay)
+        ? Math.max(config.minDelay || 5, config.finalLowDelay)
         : delay;
       
       await new Promise(resolve => setTimeout(resolve, actualDelay));
