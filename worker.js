@@ -5,6 +5,7 @@
  * 实现多API密钥负载均衡
  * 智能字符流式输出优化
  * 美观的Web管理界面
+ * https://github.com/GeorgeXie2333/LLM-Stream-Optimizer
  */
 
 // 生成UUID的函数，用于唯一标识端点
