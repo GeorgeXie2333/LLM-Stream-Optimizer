@@ -743,13 +743,13 @@ function getDefaultConfig(env) {
     geminiEnabled: !!env.GEMINI_API_KEY,
     geminiUpstreamUrl: env.GEMINI_URL || "https://generativelanguage.googleapis.com",
     geminiApiKey: env.GEMINI_API_KEY || "",
-    geminiUseNativeFetch: env.GEMINI_USE_NATIVE_FETCH !== "false", // 默认开启
+    geminiUseNativeFetch: env.GEMINI_USE_NATIVE_FETCH !== "false", // 默认开启，只有明确设置为"false"才关闭
     
     // Anthropic配置
     anthropicEnabled: !!env.ANTHROPIC_API_KEY,
     anthropicUpstreamUrl: env.ANTHROPIC_URL || "https://api.anthropic.com",
     anthropicApiKey: env.ANTHROPIC_API_KEY || "",
-    anthropicUseNativeFetch: env.ANTHROPIC_USE_NATIVE_FETCH !== "false", // 默认开启
+    anthropicUseNativeFetch: env.ANTHROPIC_USE_NATIVE_FETCH !== "false", // 默认开启，只有明确设置为"false"才关闭
     
     // 代理控制配置
     proxyApiKey: env.PROXY_API_KEY || "",  // 代理服务自身的API密钥
@@ -817,8 +817,8 @@ async function saveConfigToKV(env, config) {
       updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_API_KEY, config.geminiApiKey || ""));
     }
     
-    if ((config.geminiUseNativeFetch !== false).toString() !== (currentConfig.geminiUseNativeFetch !== false).toString()) {
-      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_USE_NATIVE_FETCH, (config.geminiUseNativeFetch !== false).toString()));
+    if ((!!config.geminiUseNativeFetch).toString() !== (!!currentConfig.geminiUseNativeFetch).toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.GEMINI_USE_NATIVE_FETCH, (!!config.geminiUseNativeFetch).toString()));
     }
     
     if (config.anthropicUpstreamUrl !== currentConfig.anthropicUpstreamUrl) {
@@ -829,8 +829,8 @@ async function saveConfigToKV(env, config) {
       updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_API_KEY, config.anthropicApiKey || ""));
     }
     
-    if ((config.anthropicUseNativeFetch !== false).toString() !== (currentConfig.anthropicUseNativeFetch !== false).toString()) {
-      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_USE_NATIVE_FETCH, (config.anthropicUseNativeFetch !== false).toString()));
+    if ((!!config.anthropicUseNativeFetch).toString() !== (!!currentConfig.anthropicUseNativeFetch).toString()) {
+      updatePromises.push(env.CONFIG_KV.put(KV_CONFIG_KEYS.ANTHROPIC_USE_NATIVE_FETCH, (!!config.anthropicUseNativeFetch).toString()));
     }
     
     if (config.proxyApiKey !== currentConfig.proxyApiKey) {
@@ -1071,9 +1071,11 @@ async function handleConfigApiRequest(request, env) {
         geminiEnabled: config.geminiEnabled,
         geminiUpstreamUrl: config.geminiUpstreamUrl,
         geminiApiKey: maskAPIKey(config.geminiApiKey),
+        geminiUseNativeFetch: config.geminiUseNativeFetch === true,
         anthropicEnabled: config.anthropicEnabled,
         anthropicUpstreamUrl: config.anthropicUpstreamUrl,
         anthropicApiKey: maskAPIKey(config.anthropicApiKey),
+        anthropicUseNativeFetch: config.anthropicUseNativeFetch === true,
         proxyApiKey: maskAPIKey(config.proxyApiKey),
         minDelay: config.minDelay,
         maxDelay: config.maxDelay,
@@ -2182,7 +2184,7 @@ function serveDashboardPage() {
                 </div>
                 <div class="mb-4">
                   <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="anthropicUseNativeFetch" checked>
+                    <input class="form-check-input" type="checkbox" id="anthropicUseNativeFetch">
                     <label class="form-check-label" for="anthropicUseNativeFetch">使用原生Fetch</label>
                   </div>
                   <div class="form-text">启用可增强安全性，但会无法访问使用Cloudflare CDN的API</div>
@@ -2225,10 +2227,10 @@ function serveDashboardPage() {
                 </div>
                 <div class="mb-4">
                   <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="geminiUseNativeFetch" checked>
-                    <label class="form-check-label" for="geminiUseNativeFetch">使用原生Fetch</label>
+                    <input class="form-check-input" type="checkbox" id="geminiUseNativeFetch">
+                    <label class="form-check-label" for="geminiUseNativeFetch">使用原生Fetch（强烈建议开启）</label>
                   </div>
-                  <div class="form-text">启用可增强安全性，但会无法访问使用Cloudflare CDN的API</div>
+                  <div class="form-text">启用可增强安全性，但会无法访问使用Cloudflare CDN的API（国内免代理访问必须开启）</div>
                 </div>
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
@@ -2385,7 +2387,7 @@ function serveDashboardPage() {
               document.getElementById('anthropicApiKey').value = config.anthropicApiKey || '';
               
               // 设置原生Fetch选项
-              document.getElementById('anthropicUseNativeFetch').checked = config.anthropicUseNativeFetch !== false;
+              document.getElementById('anthropicUseNativeFetch').checked = config.anthropicUseNativeFetch === true;
               
               // 更新状态标签
               const anthropicStatus = document.getElementById('anthropicStatus');
@@ -2404,7 +2406,7 @@ function serveDashboardPage() {
               document.getElementById('geminiApiKey').value = config.geminiApiKey || '';
               
               // 设置原生Fetch选项
-              document.getElementById('geminiUseNativeFetch').checked = config.geminiUseNativeFetch !== false;
+              document.getElementById('geminiUseNativeFetch').checked = config.geminiUseNativeFetch === true;
               
               // 更新Gemini状态徽章
               const geminiStatus = document.getElementById('geminiStatus');
@@ -2710,8 +2712,8 @@ function serveDashboardPage() {
                     '<div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>' +
                   '</div>' +
                   '<div class="col-md-6">' +
-                    '<label class="form-label">支持的模型</label>' +
-                    '<input type="text" class="form-control endpoint-models-' + id + '" placeholder="gpt-4,gpt-3.5-turbo (留空表示支持所有模型)" value="' + (endpoint && endpoint.models ? endpoint.models.join(',') : '') + '">' +
+                    '<label class="form-label">支持的模型（多端点必须设置）</label>' +
+                    '<input type="text" class="form-control endpoint-models-' + id + '" placeholder="gpt-4,gpt-3.5-turbo (单端点使用时，留空表示支持所有模型)" value="' + (endpoint && endpoint.models ? endpoint.models.join(',') : '') + '">' +
                     '<div class="form-text">多个模型用英文逗号分隔，留空表示支持所有模型</div>' +
                   '</div>' +
                   '<div class="col-md-6">' +
