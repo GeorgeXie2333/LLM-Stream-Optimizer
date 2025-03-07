@@ -3289,6 +3289,7 @@ async function getOpenAIModelsFromMultipleEndpoints(config) {
   try {
     console.log("从多个端点获取OpenAI模型列表...");
     const modelPromises = [];
+    const manuallyConfiguredModels = [];
     
     // 从每个端点获取模型
     for (const endpoint of config.openaiEndpoints) {
@@ -3299,6 +3300,20 @@ async function getOpenAIModelsFromMultipleEndpoints(config) {
       }
       
       console.log(`处理端点: ${endpoint.name || '未命名'}, URL: ${endpoint.url}`);
+      
+      // 如果端点已配置模型列表，直接使用这些模型，不向上游请求
+      if (endpoint.models && Array.isArray(endpoint.models) && endpoint.models.length > 0) {
+        console.log(`端点 ${endpoint.name || '未命名'} 已手动配置 ${endpoint.models.length} 个模型，直接使用`);
+        // 标准化模型格式
+        const configuredModels = endpoint.models.map(modelId => ({
+          id: modelId,
+          object: "model",
+          created: Math.floor(Date.now() / 1000),
+          owned_by: "openai"
+        }));
+        manuallyConfiguredModels.push(...configuredModels);
+        continue; // 跳过下面的API请求逻辑
+      }
       
       // 获取API密钥（支持负载均衡）
       let apiKey = endpoint.apiKey;
@@ -3410,8 +3425,17 @@ async function getOpenAIModelsFromMultipleEndpoints(config) {
       modelPromises.push(modelPromise);
     }
     
+    // 如果所有端点都已手动配置模型，并且没有向上游发送请求
+    if (manuallyConfiguredModels.length > 0 && modelPromises.length === 0) {
+      console.log(`所有端点都使用手动配置的模型，共 ${manuallyConfiguredModels.length} 个模型`);
+      return {
+        object: "list",
+        data: manuallyConfiguredModels
+      };
+    }
+    
     // 如果没有有效的端点，返回空列表
-    if (modelPromises.length === 0) {
+    if (modelPromises.length === 0 && manuallyConfiguredModels.length === 0) {
       console.log("没有有效的OpenAI端点，返回空列表");
       return {
         object: "list",
@@ -3426,7 +3450,7 @@ async function getOpenAIModelsFromMultipleEndpoints(config) {
     // 合并所有模型列表
     const combinedModels = {
       object: "list",
-      data: []
+      data: [...manuallyConfiguredModels] // 首先添加手动配置的模型
     };
     
     // 合并数据
