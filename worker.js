@@ -688,8 +688,8 @@ async function loadConfigFromKV(env) {
     await Promise.all(promises);
     
     // 如果KV中没有某些配置，则使用环境变量作为后备
-    config.defaultUpstreamUrl = config.defaultUpstreamUrl || env.UPSTREAM_URL || "https://api.openai.com";
-    config.defaultOutgoingApiKey = config.defaultOutgoingApiKey || env.OUTGOING_API_KEY || "";
+    config.defaultUpstreamUrl = config.defaultUpstreamUrl || env.UPSTREAM_URL || "https://api.openai.com/v1";
+    config.defaultOutgoingApiKey = config.defaultOutgoingApiKey || env.OPENAI_API_KEY || "";
     
     // 如果环境变量中有定义多个OpenAI端点，则加载它们
     if (env.OPENAI_ENDPOINTS) {
@@ -737,8 +737,8 @@ function getDefaultConfig(env) {
   const config = {
     ...DEFAULT_CONFIG,
     // OpenAI配置
-    defaultUpstreamUrl: env.UPSTREAM_URL || "https://api.openai.com",
-    defaultOutgoingApiKey: env.OUTGOING_API_KEY || "",
+    defaultUpstreamUrl: env.UPSTREAM_URL || "https://api.openai.com/v1",
+    defaultOutgoingApiKey: env.OPENAI_API_KEY || "", // 默认API密钥
     
     // Gemini配置
     geminiEnabled: !!env.GEMINI_API_KEY,
@@ -2700,7 +2700,8 @@ function serveDashboardPage() {
                   '</div>' +
                   '<div class="col-md-6">' +
                     '<label class="form-label">API端点URL</label>' +
-                    '<input type="url" class="form-control endpoint-url-' + id + '" placeholder="https://api.openai.com" value="' + (endpoint ? (endpoint.url || '') : '') + '">' +
+                    '<input type="url" class="form-control endpoint-url-' + id + '" placeholder="https://api.openai.com/v1" value="' + (endpoint ? (endpoint.url || '') : '') + '">' +
+                    '<div class="form-text">请填写API端点基础路径（如/v1或其他路径）</div>' +
                   '</div>' +
                   '<div class="col-md-6">' +
                     '<label class="form-label">API密钥</label>' +
@@ -2831,7 +2832,7 @@ async function handleRequest(request, config) {
     const path = url.pathname + url.search;
     
     // 检查是否为模型列表请求
-    const isModelsReq = isModelsRequest(path);
+    const isModelsReq = path.includes('/models');
     
     // 验证代理API密钥 (对于模型列表请求，validateProxyApiKey已经放宽了验证)
     if (!validateProxyApiKey(request, config)) {
@@ -2990,7 +2991,7 @@ async function handleRequest(request, config) {
       }
       
       upstreamRequest = createUpstreamRequest(
-        `${upstreamUrlInfo.url}${path}`, 
+        `${upstreamUrlInfo.url.endsWith('/') ? upstreamUrlInfo.url.slice(0, -1) : upstreamUrlInfo.url}/chat/completions`, 
         request, 
         requestBody, 
         outgoingApiKey
@@ -3331,11 +3332,12 @@ async function getOpenAIModelsFromMultipleEndpoints(config) {
       // 确保URL格式正确
       let url;
       try {
+        // 添加/models路径
         const baseUrl = endpoint.url.endsWith('/') 
           ? endpoint.url.slice(0, -1) 
           : endpoint.url;
         
-        url = `${baseUrl}/v1/models`;
+        url = `${baseUrl}/models`;
       } catch (urlError) {
         console.error(`构建URL时出错, 端点 ${endpoint.name || '未命名'}:`, urlError);
         continue;
@@ -3683,7 +3685,7 @@ function extractUpstreamUrl(request, config) {
   
   // 最后才回退到默认URL
   return { 
-    url: config.defaultUpstreamUrl || "https://api.openai.com", 
+    url: config.defaultUpstreamUrl || "https://api.openai.com/v1", 
     useNativeFetch: true,
     restrictedModels: null
   };
@@ -3696,7 +3698,7 @@ function validateProxyApiKey(request, config) {
   const path = url.pathname + url.search;
   
   // 如果是模型列表请求，可以放宽验证
-  const isModelsRequest = path.endsWith('/models') || path.includes('/models?');
+  const isModelsRequest = path.includes('/models');
   
   // 如果未配置代理API密钥，则不验证
   if (!config.proxyApiKey) {
@@ -4804,7 +4806,7 @@ async function getOpenAIModels(request, config) {
       
       // 确保默认URL存在
       if (!config.defaultUpstreamUrl) {
-        config.defaultUpstreamUrl = "https://api.openai.com";
+        config.defaultUpstreamUrl = "https://api.openai.com/v1";
         console.log(`未配置默认URL，使用默认值: ${config.defaultUpstreamUrl}`);
       }
       
@@ -4826,12 +4828,12 @@ async function getOpenAIModels(request, config) {
       // 使用URL构建请求
       let url;
       try {
-        // 确保URL格式正确
+        // 确保URL格式正确，自动添加/models路径
         const baseUrl = upstreamUrlInfo.url.endsWith('/') 
           ? upstreamUrlInfo.url.slice(0, -1) 
           : upstreamUrlInfo.url;
         
-        url = `${baseUrl}/v1/models`;
+        url = `${baseUrl}/models`;
         console.log(`构建的模型列表请求URL: ${url}`);
       } catch (urlError) {
         console.error("构建URL时出错:", urlError);
@@ -4950,7 +4952,7 @@ async function parseRequestBody(request) {
 
 // 检查是否是获取模型列表的请求
 function isModelsRequest(path) {
-  return path.endsWith('/models') || path.includes('/models?');
+  return path.includes('/models') || path.includes('/v1/models');
 }
 
 // 创建发送到上游API的请求
