@@ -2701,7 +2701,7 @@ function serveDashboardPage() {
                   '<div class="col-md-6">' +
                     '<label class="form-label">API端点URL</label>' +
                     '<input type="url" class="form-control endpoint-url-' + id + '" placeholder="https://api.openai.com/v1" value="' + (endpoint ? (endpoint.url || '') : '') + '">' +
-                    '<div class="form-text">请填写API端点基础路径（如/v1或其他路径）</div>' +
+                    '<div class="form-text">请填写API端点基础路径（包含如/v1或其他路径）</div>' +
                   '</div>' +
                   '<div class="col-md-6">' +
                     '<label class="form-label">API密钥</label>' +
