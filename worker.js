@@ -1222,24 +1222,23 @@ function serveLoginPage() {
       <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
       <style>
         :root {
-          --primary-color: #4361ee;
-          --primary-hover: #2e4fd6;
-          --secondary-color: #7209b7;
-          --accent-color: #4cc9f0;
-          --success-color: #06d6a0;
-          --warning-color: #ffd166;
-          --danger-color: #ef476f;
+          --primary-color: #4361ee; /* 鲜艳蓝 */
+          --primary-hover: #3a55cf; /* 深一点的蓝 */
+          --secondary-color: #7209b7; /* 紫色 */
+          --accent-color: #4cc9f0; /* 青色 */
+          --success-color: #06d6a0; /* 鲜艳绿 */
+          --warning-color: #ffd166; /* 黄色 */
+          --danger-color: #ef476f; /* 红色 */
           --light-bg: #f8f9fa;
-          --dark-bg: #2b2d42;
-          --card-bg: #ffffff;
+          --dark-bg: #2b2d42; /* 深灰蓝 */
+          --card-bg: rgba(255, 255, 255, 0.9); /* 轻微透明白色 */
           --dark-text: #2b2d42;
-          --light-text: #8d99ae;
-          --card-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+          --light-text: #8d99ae; /* 灰色 */
+          --card-shadow: 0 15px 35px rgba(67, 97, 238, 0.1), 0 5px 15px rgba(0, 0, 0, 0.07); /* 更柔和的阴影 */
           --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         }
-        
         body {
-          background: linear-gradient(135deg, #f5f7fa 0%, #e5e9f2 100%);
+          background: linear-gradient(135deg, #f5f7fa 0%, #e5e9f2 100%); /* 淡雅背景渐变 */
           font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
           min-height: 100vh;
           display: flex;
@@ -1249,53 +1248,51 @@ function serveLoginPage() {
           margin: 0;
           padding: 20px;
           position: relative;
-          overflow: hidden;
+          overflow: hidden; /* 隐藏超出部分的伪元素 */
         }
-        
-        /* 背景图形 */
+        /* 背景装饰图形 */
         body::before, body::after {
           content: '';
           position: absolute;
-          width: 1000px;
-          height: 1000px;
           border-radius: 50%;
-          background: linear-gradient(135deg, rgba(67, 97, 238, 0.05), rgba(114, 9, 183, 0.05));
+          background: linear-gradient(135deg, rgba(67, 97, 238, 0.08), rgba(114, 9, 183, 0.08)); /* 更淡的渐变 */
           z-index: -1;
+          filter: blur(50px); /* 模糊效果 */
         }
-        
         body::before {
-          top: -600px;
-          right: -300px;
+          width: 500px;
+          height: 500px;
+          top: -150px;
+          right: -150px;
         }
-        
         body::after {
-          bottom: -600px;
-          left: -300px;
-          background: linear-gradient(135deg, rgba(76, 201, 240, 0.05), rgba(67, 97, 238, 0.05));
+          width: 400px;
+          height: 400px;
+          bottom: -100px;
+          left: -100px;
+          background: linear-gradient(135deg, rgba(76, 201, 240, 0.08), rgba(67, 97, 238, 0.08));
         }
-        
         .login-container {
           width: 90%;
           max-width: 450px;
           padding: 3rem;
-          background-color: #fff;
-          border-radius: 16px;
+          background-color: var(--card-bg);
+          border-radius: 16px; /* 更圆润的边角 */
           box-shadow: var(--card-shadow);
           transform: translateY(0);
           transition: var(--transition);
           position: relative;
-          overflow: hidden;
+          overflow: hidden; /* 隐藏内部溢出的伪元素 */
           margin: 0 auto;
-          backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px); /* 背景模糊效果 */
           -webkit-backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.3); /* 细微边框增加质感 */
         }
-        
         .login-container:hover {
           transform: translateY(-8px);
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+          box-shadow: 0 20px 40px rgba(67, 97, 238, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1); /* 悬停时阴影加深 */
         }
-        
+        /* 顶部装饰条 */
         .login-container::before {
           content: "";
           position: absolute;
@@ -1305,14 +1302,13 @@ function serveLoginPage() {
           height: 6px;
           background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
         }
-        
         .login-header {
           text-align: center;
           margin-bottom: 2.5rem;
         }
-        
         .login-icon {
           font-size: 3rem;
+          /* 应用渐变色到图标 */
           background: linear-gradient(120deg, var(--primary-color), var(--secondary-color));
           -webkit-background-clip: text;
           background-clip: text;
@@ -1320,7 +1316,6 @@ function serveLoginPage() {
           margin-bottom: 1rem;
           display: inline-block;
         }
-        
         .login-title {
           text-align: center;
           margin-bottom: 0.5rem;
@@ -1329,119 +1324,107 @@ function serveLoginPage() {
           position: relative;
           letter-spacing: -0.5px;
         }
-        
         .login-subtitle {
           color: var(--light-text);
           font-size: 0.95rem;
           margin-bottom: 0;
         }
-        
         .form-group {
           margin-bottom: 1.5rem;
           position: relative;
         }
-        
         .form-control {
-          border: 2px solid #e9ecef;
+          border: 1px solid #e9ecef; /* 更细的边框 */
           padding: 1rem 1.25rem;
-          border-radius: 12px;
+          border-radius: 12px; /* 统一圆角 */
           transition: var(--transition);
           font-size: 0.95rem;
-          background-color: rgba(249, 250, 251, 0.8);
+          background-color: rgba(249, 250, 251, 0.8); /* 轻微透明 */
         }
-        
         .form-control:focus {
           border-color: var(--primary-color);
-          box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.15);
-          background-color: #fff;
+          box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.15); /* 聚焦阴影 */
+          background-color: #fff; /* 聚焦时变不透明 */
         }
-        
         .form-control:hover {
-          border-color: #d0d4d9;
+          border-color: #d0d4d9; /* 悬停时边框颜色 */
         }
-        
         .form-label {
           font-weight: 600;
           color: var(--dark-text);
           margin-bottom: 0.75rem;
           font-size: 0.95rem;
         }
-        
         .form-text {
           color: var(--light-text);
           font-size: 0.85rem;
           margin-top: 0.5rem;
         }
-        
         .btn-login {
           width: 100%;
           padding: 0.9rem;
-          border-radius: 12px;
+          border-radius: 12px; /* 统一圆角 */
           background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
           border: none;
           font-weight: 600;
           font-size: 1rem;
+          color: #fff;
           letter-spacing: 0.5px;
           box-shadow: 0 5px 15px rgba(67, 97, 238, 0.2);
           transition: var(--transition);
-          position: relative;
-          overflow: hidden;
-          z-index: 1;
+          position: relative; /* 为了伪元素定位 */
+          overflow: hidden; /* 隐藏溢出的伪元素 */
+          z-index: 1; /* 确保伪元素在内容之下 */
         }
-        
+        /* 按钮加载动画 */
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
-        
         .btn-login .bi-arrow-repeat {
           display: inline-block;
           animation: spin 1.2s linear infinite;
         }
-        
         .btn-login:hover {
-          background: linear-gradient(135deg, var(--primary-hover), var(--secondary-color));
+          background: linear-gradient(135deg, var(--primary-hover), var(--secondary-color)); /* 悬停时渐变变化 */
           transform: translateY(-3px);
-          box-shadow: 0 8px 25px rgba(67, 97, 238, 0.3);
+          box-shadow: 0 8px 25px rgba(67, 97, 238, 0.3); /* 悬停阴影加强 */
         }
-        
         .btn-login:active {
           transform: translateY(-1px);
         }
-        
-        /* 闪光效果 */
+        /* 按钮闪光效果 */
         .btn-login::after {
           content: '';
           position: absolute;
           top: -50%;
           left: -50%;
-          width: 200%;
+          width: 20%; /* 闪光条宽度 */
           height: 200%;
           background: linear-gradient(
             to right,
             rgba(255, 255, 255, 0) 0%,
-            rgba(255, 255, 255, 0.3) 50%,
+            rgba(255, 255, 255, 0.5) 50%, /* 闪光亮度 */
             rgba(255, 255, 255, 0) 100%
           );
-          transform: rotate(30deg);
+          transform: rotate(30deg); /* 闪光角度 */
           opacity: 0;
           transition: opacity 0.3s ease;
+          z-index: 2; /* 确保在按钮内容之上 */
+          pointer-events: none; /* 不干扰点击 */
         }
-        
         .btn-login:hover::after {
           opacity: 1;
-          animation: shine 1.5s ease;
+          animation: shine 1.5s ease-out; /* 调整动画速度和缓动 */
         }
-        
         @keyframes shine {
-          0% { left: -50%; }
-          100% { left: 100%; }
+          0% { left: -75%; top: -75%; } /* 调整起始位置 */
+          100% { left: 120%; top: -25%; } /* 调整结束位置 */
         }
-        
+        /* 带图标的输入框 */
         .input-with-icon {
           position: relative;
         }
-        
         .input-icon {
           position: absolute;
           left: 15px;
@@ -1449,30 +1432,51 @@ function serveLoginPage() {
           transform: translateY(-50%);
           color: var(--light-text);
           font-size: 1.2rem;
+          pointer-events: none; /* 防止图标干扰输入 */
         }
-        
         .input-with-icon .form-control {
-          padding-left: 3rem;
+          padding-left: 3rem; /* 为图标留出空间 */
         }
-        
+        /* 警告框样式 */
         .alert {
-          border-radius: 12px;
-          padding: 1.25rem 1.5rem;
+          border-radius: 12px; /* 统一圆角 */
+          padding: 1rem 1.25rem; /* 调整内边距 */
           margin-bottom: 2rem;
           border: none;
           display: none;
-          animation: slideDown 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+          font-weight: 500;
+          animation: slideDown 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); /* 果冻效果入场 */
           box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
         }
-        
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-30px); }
-          to { opacity: 1; transform: translateY(0); }
+        /* 成功提示框特殊样式 */
+        .alert-success {
+          background-color: var(--success-color);
+          color: white;
         }
-        
+        /* 错误提示框 */
+        .alert-danger {
+          background-color: var(--danger-color);
+          color: white;
+        }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-30px) scale(0.9); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        /* 响应式调整 */
         @media (max-width: 768px) {
           .login-container {
             padding: 2rem;
+          }
+        }
+        @media (max-width: 480px) {
+          .login-container {
+            padding: 1.5rem;
+          }
+          .login-title {
+            font-size: 1.5rem;
+          }
+          .login-icon {
+            font-size: 2.5rem;
           }
         }
       </style>
@@ -1484,17 +1488,19 @@ function serveLoginPage() {
           <h1 class="login-title">LLM Stream Optimizer</h1>
           <p class="login-subtitle">管理员登录</p>
         </div>
-        
+
+        <!-- 登录失败提示 -->
         <div id="loginAlert" class="alert alert-danger" role="alert">
           <i class="bi bi-exclamation-triangle-fill me-2"></i>
           <span id="alertMessage"></span>
         </div>
-        
-        <div id="successAlert" class="alert alert-success" role="alert" style="display: none; background-color: #06d6a0; color: white; font-weight: 500; border: none; animation: slideDown 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);">
+
+        <!-- 登录成功提示 -->
+        <div id="successAlert" class="alert alert-success" role="alert" style="display: none;">
           <i class="bi bi-check-circle-fill me-2"></i>
           <span id="successMessage">登录成功！正在跳转...</span>
         </div>
-        
+
         <form id="loginForm">
           <div class="form-group">
             <label for="password" class="form-label">管理员密码</label>
@@ -1504,44 +1510,49 @@ function serveLoginPage() {
             </div>
             <div class="form-text">请输入代理API密钥作为管理员密码</div>
           </div>
-          
-          <div class="form-group">
-            <button type="submit" class="btn btn-login btn-primary">
+          <div class="form-group mt-4"> <!-- 增加按钮与上方间距 -->
+            <button type="submit" class="btn btn-login">
               <i class="bi bi-box-arrow-in-right me-2"></i>登录
             </button>
           </div>
         </form>
       </div>
-      
+
       <script>
-        // 页面加载时检查用户是否已登录，避免无效cookie
+        // 页面加载时检查用户是否已登录
         window.addEventListener('load', async () => {
           try {
-            // 发送请求检查登录状态
             const checkResponse = await fetch('/admin/api/check-session', {
               method: 'GET',
               headers: { 'Content-Type': 'application/json' }
             });
-            
             // 只有服务器确认会话有效才跳转
             if (checkResponse.ok && (await checkResponse.json()).isLoggedIn) {
               window.location.href = '/admin/dashboard';
             }
           } catch (error) {
             console.error('检查会话状态出错:', error);
+            // 不显示错误，避免干扰未登录用户
           }
         });
-        
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
           e.preventDefault();
           const password = document.getElementById('password').value;
-          
-          // 获取登录按钮并设置加载状态
           const loginButton = document.querySelector('.btn-login');
           const originalButtonContent = loginButton.innerHTML;
+          const loginAlert = document.getElementById('loginAlert');
+          const successAlert = document.getElementById('successAlert');
+          const alertMessage = document.getElementById('alertMessage');
+
+          // 隐藏所有提示
+          loginAlert.style.display = 'none';
+          successAlert.style.display = 'none';
+
+          // 设置加载状态
           loginButton.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i>登录中...';
           loginButton.disabled = true;
-          
+
           try {
             const response = await fetch('/admin/api/login', {
               method: 'POST',
@@ -1550,57 +1561,61 @@ function serveLoginPage() {
               },
               body: JSON.stringify({ password }),
             });
-            
             const data = await response.json();
-            
+
             if (response.ok && data.success) {
               // 显示成功弹窗
-              const successAlert = document.getElementById('successAlert');
               successAlert.style.display = 'block';
-              
-              // 延迟1.5秒后跳转，给用户时间看到成功消息
+              // 延迟跳转，让用户看到成功消息
               setTimeout(() => {
                 window.location.href = '/admin/dashboard';
               }, 1500);
+              // 成功后不需要恢复按钮状态，因为页面会跳转
             } else {
-              const alertElement = document.getElementById('loginAlert');
-              const messageElement = document.getElementById('alertMessage');
-              messageElement.textContent = data.error || '登录失败，请检查密码';
-              alertElement.style.display = 'block';
-              
-              // 自动隐藏警告
+              // 显示失败弹窗
+              alertMessage.textContent = data.error || '登录失败，请检查密码';
+              loginAlert.style.display = 'block';
+              // 恢复按钮状态
+              loginButton.innerHTML = originalButtonContent;
+              loginButton.disabled = false;
+              // 自动隐藏错误警告
               setTimeout(() => {
-                alertElement.style.display = 'none';
+                loginAlert.style.display = 'none';
               }, 5000);
             }
           } catch (error) {
             console.error('登录出错:', error);
-            const alertElement = document.getElementById('loginAlert');
-            const messageElement = document.getElementById('alertMessage');
-            messageElement.textContent = '登录请求失败，请稍后重试';
-            alertElement.style.display = 'block';
-          } finally {
-            // 恢复登录按钮的原始内容和状态
+            // 显示网络或请求错误弹窗
+            alertMessage.textContent = '登录请求失败，请稍后重试';
+            loginAlert.style.display = 'block';
+            // 恢复按钮状态
             loginButton.innerHTML = originalButtonContent;
             loginButton.disabled = false;
+             // 自动隐藏错误警告
+            setTimeout(() => {
+                loginAlert.style.display = 'none';
+            }, 5000);
           }
+          // 不需要 finally 块恢复按钮，因为成功时会跳转，失败时已在相应代码块恢复
         });
       </script>
     </body>
   </html>
   `;
-  
   return new Response(html, {
-    headers: { 
+    headers: {
       'Content-Type': 'text/html;charset=UTF-8',
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0', // 强制不缓存登录页
       'Pragma': 'no-cache',
       'Expires': '0'
     }
   });
 }
 
-// 提供仪表盘页面
+/**
+ * 提供仪表盘页面的 HTML 响应
+ * @returns {Response} HTML 响应对象
+ */
 function serveDashboardPage() {
   const html = `
   <!DOCTYPE html>
@@ -1614,29 +1629,27 @@ function serveDashboardPage() {
       <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
       <style>
         :root {
-          --primary-color: #4361ee;
-          --primary-hover: #2e4fd6;
-          --secondary-color: #7209b7;
-          --accent-color: #4cc9f0;
-          --success-color: #06d6a0;
-          --warning-color: #ffd166;
-          --danger-color: #ef476f;
+          --primary-color: #4361ee; /* 鲜艳蓝 */
+          --primary-hover: #3a55cf; /* 深一点的蓝 */
+          --secondary-color: #7209b7; /* 紫色 */
+          --accent-color: #4cc9f0; /* 青色 */
+          --success-color: #06d6a0; /* 鲜艳绿 */
+          --warning-color: #ffd166; /* 黄色 */
+          --danger-color: #ef476f; /* 红色 */
           --light-bg: #f8f9fa;
-          --dark-bg: #2b2d42;
-          --card-bg: #ffffff;
+          --dark-bg: #2b2d42; /* 深灰蓝 */
+          --card-bg: rgba(255, 255, 255, 0.9); /* 轻微透明白色 */
           --dark-text: #2b2d42;
-          --light-text: #8d99ae;
-          --card-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+          --light-text: #8d99ae; /* 灰色 */
+          --card-shadow: 0 15px 35px rgba(67, 97, 238, 0.1), 0 5px 15px rgba(0, 0, 0, 0.07); /* 更柔和的阴影 */
           --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-          --footer-height: 80px;
+          --footer-height: 70px; /* 页脚高度 */
         }
-        
         html, body {
           height: 100%;
         }
-        
         body {
-          background: linear-gradient(135deg, #f5f7fa 0%, #e5e9f2 100%);
+          background: linear-gradient(135deg, #f5f7fa 0%, #e5e9f2 100%); /* 淡雅背景渐变 */
           font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
           color: var(--dark-text);
           min-height: 100vh;
@@ -1645,135 +1658,135 @@ function serveDashboardPage() {
           position: relative;
           overflow-x: hidden;
           display: flex;
-          flex-direction: column;
+          flex-direction: column; /* 使页脚能固定在底部 */
         }
-        
-        /* 背景图形 */
+        /* 背景装饰图形 (固定位置) */
         body::before, body::after {
           content: '';
-          position: fixed;
-          width: 1000px;
-          height: 1000px;
+          position: fixed; /* 固定位置，不随滚动条滚动 */
           border-radius: 50%;
-          background: linear-gradient(135deg, rgba(67, 97, 238, 0.05), rgba(114, 9, 183, 0.05));
+          background: linear-gradient(135deg, rgba(67, 97, 238, 0.08), rgba(114, 9, 183, 0.08));
           z-index: -1;
+          filter: blur(60px); /* 加大模糊 */
         }
-        
         body::before {
-          top: -600px;
-          right: -300px;
+          width: 600px;
+          height: 600px;
+          top: -200px;
+          right: -200px;
         }
-        
         body::after {
-          bottom: -600px;
-          left: -300px;
-          background: linear-gradient(135deg, rgba(76, 201, 240, 0.05), rgba(67, 97, 238, 0.05));
+          width: 500px;
+          height: 500px;
+          bottom: -150px;
+          left: -150px;
+          background: linear-gradient(135deg, rgba(76, 201, 240, 0.08), rgba(67, 97, 238, 0.08));
         }
-        
         .main-content {
-          flex: 1 0 auto;
-          padding-bottom: 2rem;
+          flex: 1 0 auto; /* 占据剩余空间 */
+          padding-top: 2rem; /* 为粘性页眉留出空间 */
+          padding-bottom: calc(var(--footer-height) + 2rem); /* 为页脚留出空间 */
           width: 100%;
         }
-        
         .dashboard-header {
-          background-color: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
+          background-color: rgba(255, 255, 255, 0.85); /* 轻微透明 */
+          backdrop-filter: blur(10px); /* 背景模糊 */
           -webkit-backdrop-filter: blur(10px);
           box-shadow: 0 5px 25px rgba(0, 0, 0, 0.05);
-          padding: 1.25rem 0;
-          margin-bottom: 2rem;
-          position: sticky;
+          padding: 1rem 0; /* 调整内边距 */
+          margin-bottom: 0; /* 移除默认下边距 */
+          position: sticky; /* 粘性定位 */
           top: 0;
-          z-index: 100;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+          z-index: 1020; /* 确保在内容之上 */
+          border-bottom: 1px solid rgba(0, 0, 0, 0.05); /* 细微底部分隔线 */
         }
-        
         .header-container {
           display: flex;
           justify-content: space-between;
           align-items: center;
         }
-        
         .dashboard-brand {
           display: flex;
           align-items: center;
           color: var(--dark-text);
           text-decoration: none;
+          transition: var(--transition);
         }
-        
+        .dashboard-brand:hover {
+          opacity: 0.8;
+        }
         .brand-icon {
           font-size: 1.75rem;
+          /* 图标渐变色 */
           background: linear-gradient(120deg, var(--primary-color), var(--secondary-color));
           -webkit-background-clip: text;
           background-clip: text;
           -webkit-text-fill-color: transparent;
           margin-right: 0.75rem;
+          line-height: 1; /* 确保图标垂直居中 */
         }
-        
+        .brand-title {
+           font-weight: 700;
+           font-size: 1.5rem; /* 调整标题大小 */
+           margin-bottom: 0; /* 移除默认下边距 */
+           letter-spacing: -0.5px;
+        }
+        /* 标签页样式 */
         .nav-tabs {
-          margin-bottom: 1.5rem;
-          border-bottom: 2px solid rgba(233, 236, 239, 0.8);
-          padding-bottom: 0;
+          margin-bottom: 2rem; /* 增加与下方内容的间距 */
+          border-bottom: 1px solid #dee2e6; /* 标准Bootstrap下划线 */
+          padding: 0 0.5rem; /* 稍微增加左右内边距 */
         }
-        
         .nav-tabs .nav-link {
           border: none;
           font-weight: 500;
           color: var(--light-text);
           padding: 0.75rem 1.25rem;
-          border-radius: 8px 8px 0 0;
+          margin-bottom: -1px; /* 与下边框重合 */
+          border-radius: 8px 8px 0 0; /* 顶部圆角 */
           transition: var(--transition);
           position: relative;
+          transform: translateY(0);
         }
-        
         .nav-tabs .nav-link:hover {
           color: var(--primary-color);
           background-color: rgba(67, 97, 238, 0.05);
+          transform: translateY(-2px); /* 轻微上移 */
         }
-        
         .nav-tabs .nav-link.active {
           color: var(--primary-color);
-          background-color: transparent;
+          background-color: transparent; /* 激活时背景透明 */
           font-weight: 600;
+          border: none; /* 移除Bootstrap默认边框 */
+          border-bottom: 3px solid var(--primary-color); /* 使用单色下划线更简洁 */
         }
-        
-        .nav-tabs .nav-link.active::after {
-          content: "";
-          position: absolute;
-          bottom: -2px;
-          left: 0;
-          width: 100%;
-          height: 3px;
-          background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-          border-radius: 3px 3px 0 0;
-        }
-        
+        /* 移除激活状态下的渐变下划线伪元素 */
+        /* .nav-tabs .nav-link.active::after { content: none; } */
         .nav-tabs .nav-link i {
           margin-right: 0.5rem;
+          font-size: 1.1em; /* 图标稍微大一点 */
+          vertical-align: middle; /* 垂直居中 */
         }
-        
+        /* 配置卡片 */
         .config-card {
           background-color: var(--card-bg);
           border-radius: 16px;
           box-shadow: var(--card-shadow);
-          padding: 2rem;
+          padding: 2.5rem; /* 增加内边距 */
           margin-bottom: 2rem;
           transition: var(--transition);
-          border: none;
+          border: 1px solid rgba(255, 255, 255, 0.3);
           transform: translateY(0);
           position: relative;
           overflow: hidden;
           backdrop-filter: blur(10px);
           -webkit-backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        
         .config-card:hover {
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+          box-shadow: 0 20px 40px rgba(67, 97, 238, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1);
           transform: translateY(-8px);
         }
-        
+        /* 卡片顶部装饰条 */
         .config-card::before {
           content: "";
           position: absolute;
@@ -1781,27 +1794,27 @@ function serveDashboardPage() {
           left: 0;
           width: 100%;
           height: 6px;
-          background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+          background: linear-gradient(90deg, var(--primary-color), var(--accent-color)); /* 使用不同的渐变 */
         }
-        
         .card-title {
-          margin-bottom: 1.5rem;
+          margin-bottom: 2rem; /* 增加标题与内容的间距 */
           color: var(--dark-text);
           font-weight: 700;
           display: flex;
           align-items: center;
           letter-spacing: -0.5px;
+          font-size: 1.3rem; /* 调整标题大小 */
         }
-        
         .card-title i {
-          margin-right: 0.75rem;
+          margin-right: 0.85rem;
+          /* 标题图标渐变色 */
           background: linear-gradient(120deg, var(--primary-color), var(--secondary-color));
           -webkit-background-clip: text;
           background-clip: text;
           -webkit-text-fill-color: transparent;
-          font-size: 1.5rem;
+          font-size: 1.7rem; /* 调整图标大小 */
         }
-        
+        /* 保存按钮 */
         .btn-save {
           min-width: 120px;
           padding: 0.9rem 1.5rem;
@@ -1809,149 +1822,143 @@ function serveDashboardPage() {
           letter-spacing: 0.5px;
           border-radius: 12px;
           background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+          color: #fff;
           border: none;
           transition: var(--transition);
           position: relative;
           overflow: hidden;
           box-shadow: 0 5px 15px rgba(67, 97, 238, 0.2);
+          z-index: 1;
         }
-        
         .btn-save:hover {
           background: linear-gradient(135deg, var(--primary-hover), var(--secondary-color));
           transform: translateY(-3px);
           box-shadow: 0 8px 25px rgba(67, 97, 238, 0.3);
         }
-        
         .btn-save:active {
           transform: translateY(-1px);
         }
-        
-        /* 闪光效果 */
+        /* 按钮闪光效果 (复用登录页样式) */
         .btn-save::after {
           content: '';
           position: absolute;
           top: -50%;
           left: -50%;
-          width: 200%;
+          width: 20%;
           height: 200%;
-          background: linear-gradient(
-            to right,
-            rgba(255, 255, 255, 0) 0%,
-            rgba(255, 255, 255, 0.3) 50%,
-            rgba(255, 255, 255, 0) 100%
-          );
+          background: linear-gradient(to right, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.5) 50%, rgba(255, 255, 255, 0) 100%);
           transform: rotate(30deg);
           opacity: 0;
           transition: opacity 0.3s ease;
+          z-index: 2;
+          pointer-events: none;
         }
-        
         .btn-save:hover::after {
           opacity: 1;
-          animation: shine 1.5s ease;
+          animation: shine 1.5s ease-out;
         }
-        
         @keyframes shine {
-          0% { left: -50%; }
-          100% { left: 100%; }
+          0% { left: -75%; top: -75%; }
+          100% { left: 120%; top: -25%; }
         }
-        
         .btn-save i {
           margin-right: 0.5rem;
         }
-        
+        /* 状态徽章 */
         .status-badge {
           font-size: 0.75rem;
           font-weight: 600;
           padding: 0.35rem 0.75rem;
-          border-radius: 20px;
-          animation: fadeIn 0.5s ease;
+          border-radius: 20px; /* 胶囊形状 */
+          animation: fadeIn 0.5s ease forwards; /* 保证动画结束时停留在最终状态 */
+          opacity: 0; /* 初始透明 */
+          vertical-align: middle; /* 确保与文字对齐 */
+          margin-left: 0.5rem; /* 与标题间距 */
         }
-        
         @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          from { opacity: 0; transform: scale(0.8); }
+          to { opacity: 1; transform: scale(1); }
         }
-        
-        .bg-success {
+        .bg-success-custom { /* 自定义成功色，避免覆盖Bootstrap */
           background-color: var(--success-color) !important;
+          color: white;
         }
-        
-        .bg-secondary {
+        .bg-secondary-custom { /* 自定义次要色 */
           background-color: var(--light-text) !important;
+          color: white;
         }
-        
+        /* 表单元素 */
         .form-control {
-          border: 2px solid #e9ecef;
+          border: 1px solid #e9ecef;
           padding: 1rem 1.25rem;
           border-radius: 12px;
           transition: var(--transition);
           font-size: 0.95rem;
           background-color: rgba(249, 250, 251, 0.8);
         }
-        
         .form-control:focus {
           border-color: var(--primary-color);
           box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.15);
           background-color: #fff;
         }
-        
         .form-control:hover {
           border-color: #d0d4d9;
         }
-        
         .form-label {
           font-weight: 600;
           color: var(--dark-text);
           margin-bottom: 0.75rem;
           font-size: 0.95rem;
         }
-        
         .form-text {
           color: var(--light-text);
           font-size: 0.85rem;
           margin-top: 0.5rem;
         }
-        
+        /* 提示框 */
         .alert {
           border-radius: 12px;
-          padding: 1.25rem 1.5rem;
+          padding: 1rem 1.25rem;
           margin-bottom: 2rem;
           border: none;
-          display: none;
+          display: none; /* 默认隐藏 */
+          font-weight: 500;
           animation: slideDown 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
           box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
         }
-        
+        .alert-success { background-color: var(--success-color); color: white; }
+        .alert-danger { background-color: var(--danger-color); color: white; }
+        .alert-info { background-color: var(--accent-color); color: #fff; }
+        .alert-warning { background-color: var(--warning-color); color: var(--dark-text); }
+
         @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-30px); }
-          to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; transform: translateY(-30px) scale(0.9); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        
+        /* 退出按钮 */
         #logoutBtn {
-          padding: 0.7rem 1.2rem;
-          border-radius: 12px;
-          border: 2px solid rgba(233, 236, 239, 0.8);
+          padding: 0.6rem 1.1rem; /* 微调尺寸 */
+          border-radius: 10px; /* 圆角 */
+          border: 1px solid #dee2e6;
           background: transparent;
           color: var(--dark-text);
           font-weight: 500;
           transition: var(--transition);
         }
-        
         #logoutBtn:hover {
-          background-color: #f8f9fa;
+          background-color: rgba(67, 97, 238, 0.1); /* 淡蓝色背景 */
           border-color: var(--primary-color);
           color: var(--primary-color);
-          transform: translateY(-2px);
+          transform: translateY(-2px); /* 轻微上移 */
+          box-shadow: 0 4px 10px rgba(67, 97, 238, 0.1); /* 添加阴影 */
         }
-        
         #logoutBtn i {
           margin-right: 0.5rem;
         }
-        
+        /* API Key 容器和切换按钮 */
         .api-key-wrapper {
           position: relative;
         }
-        
         .api-key-toggle {
           position: absolute;
           right: 15px;
@@ -1962,112 +1969,128 @@ function serveDashboardPage() {
           color: var(--light-text);
           cursor: pointer;
           transition: var(--transition);
+          padding: 0.25rem; /* 增加点击区域 */
+          line-height: 1; /* 确保图标垂直居中 */
         }
-        
         .api-key-toggle:hover {
           color: var(--primary-color);
         }
-        
+        .api-key-toggle i {
+          font-size: 1.2rem; /* 调整图标大小 */
+        }
+        /* URL 输入框图标 */
         .url-icon {
           position: absolute;
           left: 15px;
           top: 50%;
           transform: translateY(-50%);
           color: var(--light-text);
+          pointer-events: none; /* 防止干扰输入 */
+          font-size: 1.2rem;
         }
-        
         .has-url-icon {
-          padding-left: 2.8rem;
+          padding-left: 3rem; /* 为图标留出空间 */
         }
-        
-        .tab-icon {
-          margin-right: 0.5rem;
-        }
-        
-        .section-divider {
+        /* 分隔线 (多端点配置内部使用) */
+        .endpoint-divider {
           height: 1px;
-          background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(233,236,239,1) 50%, rgba(0,0,0,0) 100%);
-          margin: 2rem 0;
+          background: linear-gradient(90deg, rgba(233,236,239,0) 0%, rgba(233,236,239,1) 50%, rgba(233,236,239,0) 100%);
+          margin: 1.5rem 0;
         }
-        
         .form-footer {
           display: flex;
           justify-content: flex-end;
-          margin-top: 1.5rem;
+          margin-top: 2rem; /* 增加与表单内容的间距 */
+          padding-top: 1.5rem; /* 增加顶部内边距 */
+          border-top: 1px solid #eee; /* 添加细分隔线 */
         }
-        
-        /* 添加标签动画效果 */
-        .nav-tabs .nav-link {
-          transform: translateY(0);
-        }
-        
-        .nav-tabs .nav-link:hover {
-          transform: translateY(-3px);
-        }
-        
+        /* 标签页内容切换动画 */
         .tab-pane {
-          animation: fadeIn 0.6s ease;
+          animation: fadeInPane 0.6s ease forwards;
+          opacity: 0;
         }
-        
+        @keyframes fadeInPane {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .tab-pane.active {
+          opacity: 1; /* 确保激活的tab可见 */
+        }
         /* 美化网站页脚 */
         .dashboard-footer {
           text-align: center;
-          padding: 2rem 0;
+          padding: 1.5rem 0; /* 调整内边距 */
           color: var(--light-text);
-          background-color: rgba(255, 255, 255, 0.8);
+          background-color: rgba(255, 255, 255, 0.8); /* 与页眉背景协调 */
           backdrop-filter: blur(10px);
           -webkit-backdrop-filter: blur(10px);
-          border-top: 1px solid rgba(233, 236, 239, 0.8);
-          margin-top: auto;
-          width: 100%;
-          flex-shrink: 0;
+          border-top: 1px solid rgba(0, 0, 0, 0.05); /* 与页眉协调 */
+          flex-shrink: 0; /* 防止页脚缩放 */
           height: var(--footer-height);
           display: flex;
           align-items: center;
           justify-content: center;
+          position: fixed; /* 固定在底部 */
+          bottom: 0;
+          left: 0;
+          width: 100%;
+          z-index: 1000;
         }
-        
         .dashboard-footer p {
           margin-bottom: 0;
           font-size: 0.9rem;
         }
-        
-        /* 添加可爱的小图标 */
-        .feature-icon {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 50px;
-          height: 50px;
-          border-radius: 12px;
-          background: linear-gradient(135deg, rgba(67, 97, 238, 0.1), rgba(76, 201, 240, 0.1));
-          margin-bottom: 1rem;
+        .dashboard-footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
         }
-        
-        .feature-icon i {
-          font-size: 1.5rem;
-          color: var(--primary-color);
+        .dashboard-footer a:hover {
+            text-decoration: underline;
         }
-        
-        /* 响应式调整 */
+        /* 多端点配置卡片样式 */
+        .openai-endpoint.card {
+           background-color: rgba(248, 249, 250, 0.7); /* 稍微区分背景 */
+           border: 1px dashed #dee2e6; /* 虚线边框 */
+           box-shadow: none; /* 移除阴影 */
+        }
+        .openai-endpoint.card:hover {
+            transform: none; /* 移除悬停位移 */
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05); /* 添加轻微悬停阴影 */
+        }
+        .openai-endpoint .card-body {
+            padding: 1.5rem; /* 调整内边距 */
+        }
+        .openai-endpoint .card-subtitle {
+            font-weight: 600;
+            color: var(--dark-text);
+        }
+         /* 响应式调整 */
+        @media (max-width: 992px) {
+            .config-card {
+                padding: 2rem;
+            }
+        }
         @media (max-width: 768px) {
-          .config-card {
-            padding: 1.5rem;
-          }
-          
-          .dashboard-header {
-            padding: 1rem 0;
-          }
-          
-          .dashboard-brand h1 {
-            font-size: 1.25rem;
-          }
-          
-          .nav-tabs .nav-link {
-            padding: 0.5rem 0.75rem;
-            font-size: 0.9rem;
-          }
+          .main-content { padding-top: 1rem; }
+          .config-card { padding: 1.5rem; }
+          .dashboard-header { padding: 0.75rem 0; }
+          .brand-title { font-size: 1.25rem; }
+          .nav-tabs .nav-link { padding: 0.6rem 1rem; font-size: 0.9rem; }
+          .card-title { font-size: 1.15rem; margin-bottom: 1.5rem; }
+          .card-title i { font-size: 1.5rem; }
+          .form-footer { margin-top: 1.5rem; padding-top: 1rem; }
         }
+         @media (max-width: 576px) {
+             .header-container { flex-direction: column; align-items: flex-start; }
+             #logoutBtn { margin-top: 0.5rem; align-self: flex-end; }
+             .nav-tabs { font-size: 0.85rem; }
+             .nav-tabs .nav-link { padding: 0.5rem 0.75rem; }
+             .form-control, .form-label, .form-text { font-size: 0.9rem; }
+             .btn-save { padding: 0.8rem 1.2rem; font-size: 0.95rem; }
+             .config-card { padding: 1rem; }
+             .openai-endpoint .card-body { padding: 1rem; }
+         }
       </style>
     </head>
     <body>
@@ -2076,7 +2099,7 @@ function serveDashboardPage() {
           <div class="header-container">
             <a href="/admin/dashboard" class="dashboard-brand">
               <div class="brand-icon"><i class="bi bi-braces-asterisk"></i></div>
-              <h1 class="h3 mb-0">LLM Stream Optimizer</h1>
+              <h1 class="brand-title">LLM Stream Optimizer</h1>
             </a>
             <button id="logoutBtn" class="btn">
               <i class="bi bi-box-arrow-right"></i>退出登录
@@ -2084,694 +2107,688 @@ function serveDashboardPage() {
           </div>
         </div>
       </header>
-      
-      <div class="container flex-grow-1 main-content">
+
+      <div class="container main-content">
+        <!-- 状态提示框 -->
         <div id="statusAlert" class="alert alert-dismissible fade show mb-4" role="alert">
           <span id="alertMessage"></span>
           <button type="button" class="btn-close" aria-label="Close" onclick="document.getElementById('statusAlert').style.display='none'"></button>
         </div>
-        
+
+        <!-- 导航标签 -->
         <ul class="nav nav-tabs" id="configTabs" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="nav-link active" id="openai-tab" data-bs-toggle="tab" data-bs-target="#openai" type="button" role="tab" aria-controls="openai" aria-selected="true">
-              <i class="bi bi-chat-square-text tab-icon"></i>OpenAI配置
+              <i class="bi bi-chat-square-text"></i>OpenAI
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="anthropic-tab" data-bs-toggle="tab" data-bs-target="#anthropic" type="button" role="tab" aria-controls="anthropic" aria-selected="false">
-              <i class="bi bi-stars tab-icon"></i>Anthropic配置
+              <i class="bi bi-stars"></i>Anthropic
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="gemini-tab" data-bs-toggle="tab" data-bs-target="#gemini" type="button" role="tab" aria-controls="gemini" aria-selected="false">
-              <i class="bi bi-gem tab-icon"></i>Gemini配置
+              <i class="bi bi-gem"></i>Gemini
             </button>
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab" aria-controls="general" aria-selected="false">
-              <i class="bi bi-gear tab-icon"></i>通用设置
+              <i class="bi bi-sliders"></i>通用与优化 <!-- 改用更形象的图标 -->
             </button>
           </li>
         </ul>
-        
+
+        <!-- 标签页内容 -->
         <div class="tab-content" id="configTabsContent">
           <!-- OpenAI配置 -->
           <div class="tab-pane fade show active" id="openai" role="tabpanel" aria-labelledby="openai-tab">
             <div class="config-card">
               <h5 class="card-title">
                 <i class="bi bi-chat-square-text"></i>
-                OpenAI格式 API配置
-                <span id="openaiStatus" class="badge rounded-pill ms-2 status-badge bg-secondary">未启用</span>
+                OpenAI 格式 API 配置
+                <span id="openaiStatus" class="badge status-badge bg-secondary-custom">未启用</span>
               </h5>
               <form id="openaiForm">
-                <div class="mb-4">
-                  <p class="alert alert-info">
-                    <i class="bi bi-info-circle"></i>
-                    本配置已改为完全使用多端点配置模式，请在下方添加您的API端点。
-                  </p>
+                <div class="mb-4 alert alert-info d-flex align-items-center">
+                    <i class="bi bi-info-circle-fill flex-shrink-0 me-2" style="font-size: 1.2rem;"></i>
+                    <div>
+                        本配置已改为完全使用下方的多端点配置模式。请添加并管理您的 OpenAI 格式 API 端点。
+                    </div>
                 </div>
-                
+
                 <!-- 多端点配置 -->
-                <div class="mt-3 mb-4">
-                  <h5 class="card-subtitle mb-3">
-                    <i class="bi bi-diagram-3"></i>
-                    多端点配置
-                    <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="addOpenAIEndpoint">
-                      <i class="bi bi-plus-circle"></i> 添加端点
+                <div class="mt-4 mb-4">
+                  <h6 class="mb-3 fw-bold">
+                    <i class="bi bi-diagram-3-fill me-2 text-primary"></i>
+                    API 端点管理
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-2 rounded-pill px-3" id="addOpenAIEndpoint">
+                      <i class="bi bi-plus-circle me-1"></i> 添加端点
                     </button>
-                  </h5>
-                  <div class="form-text mb-3">配置多个OpenAI格式API端点，可以根据模型名称自动路由到不同端点(需设置模型名称)</div>
-                  
+                  </h6>
+                  <div class="form-text mb-3">您可以配置多个 OpenAI 格式的 API 端点。如果设置了模型名称，请求将自动路由到支持该模型的端点。</div>
                   <div id="openaiEndpointsContainer">
                     <!-- 端点列表将通过JS动态生成 -->
                   </div>
                 </div>
-                
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
-                    <i class="bi bi-check-circle"></i>保存配置
+                    <i class="bi bi-check-circle"></i>保存 OpenAI 配置
                   </button>
                 </div>
               </form>
             </div>
           </div>
-          
+
           <!-- Anthropic配置 -->
           <div class="tab-pane fade" id="anthropic" role="tabpanel" aria-labelledby="anthropic-tab">
             <div class="config-card">
               <h5 class="card-title">
                 <i class="bi bi-stars"></i>
-                Anthropic格式 API配置
-                <span id="anthropicStatus" class="badge rounded-pill ms-2 status-badge bg-secondary">未启用</span>
+                Anthropic 格式 API 配置
+                <span id="anthropicStatus" class="badge status-badge bg-secondary-custom">未启用</span>
               </h5>
               <form id="anthropicForm">
                 <div class="mb-4">
-                  <label for="anthropicUpstreamUrl" class="form-label">API端点URL</label>
+                  <label for="anthropicUpstreamUrl" class="form-label">API 端点 URL</label>
                   <div class="position-relative">
                     <i class="bi bi-link-45deg url-icon"></i>
-                    <input type="url" class="form-control has-url-icon" id="anthropicUpstreamUrl" placeholder="https://api.anthropic.com">
+                    <input type="url" class="form-control has-url-icon" id="anthropicUpstreamUrl" placeholder="例如: https://api.anthropic.com">
                   </div>
-                  <div class="form-text">Anthropic格式 API端点URL</div>
+                  <div class="form-text">请输入 Anthropic 格式 API 的基础 URL。</div>
                 </div>
                 <div class="mb-4">
-                  <label for="anthropicApiKey" class="form-label">API密钥</label>
+                  <label for="anthropicApiKey" class="form-label">API 密钥</label>
                   <div class="api-key-wrapper">
-                    <input type="password" class="form-control" id="anthropicApiKey" placeholder="sk-ant-...">
-                    <button type="button" class="api-key-toggle" data-target="anthropicApiKey">
+                    <input type="password" class="form-control" id="anthropicApiKey" placeholder="sk-ant-..." autocomplete="off">
+                    <button type="button" class="api-key-toggle" data-target="anthropicApiKey" tabindex="-1">
                       <i class="bi bi-eye"></i>
                     </button>
                   </div>
-                  <div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>
+                  <div class="form-text">支持设置多个 API 密钥，请使用英文逗号 (,) 分隔，系统将进行负载均衡。</div>
                 </div>
-                <div class="mb-4">
-                  <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="anthropicUseNativeFetch">
-                    <label class="form-check-label" for="anthropicUseNativeFetch">使用原生Fetch</label>
+                <div class="mb-4 form-check form-switch ps-0"> <!-- 调整Switch对齐 -->
+                  <div class="d-flex align-items-center">
+                    <input class="form-check-input ms-0 me-2" type="checkbox" id="anthropicUseNativeFetch" style="font-size: 1.2em; margin-top: 0;">
+                    <label class="form-check-label" for="anthropicUseNativeFetch">使用原生 Fetch</label>
                   </div>
-                  <div class="form-text">启用可增强安全性，但会无法访问使用Cloudflare CDN的API</div>
+                  <div class="form-text mt-1">启用此选项可增强安全性，但可能无法访问部署在 Cloudflare CDN 后的 API 端点。</div>
                 </div>
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
-                    <i class="bi bi-check-circle"></i>保存配置
+                    <i class="bi bi-check-circle"></i>保存 Anthropic 配置
                   </button>
                 </div>
               </form>
             </div>
           </div>
-          
+
           <!-- Gemini配置 -->
           <div class="tab-pane fade" id="gemini" role="tabpanel" aria-labelledby="gemini-tab">
             <div class="config-card">
               <h5 class="card-title">
                 <i class="bi bi-gem"></i>
-                Gemini格式 API配置
-                <span id="geminiStatus" class="badge rounded-pill ms-2 status-badge bg-secondary">未启用</span>
+                Gemini 格式 API 配置
+                <span id="geminiStatus" class="badge status-badge bg-secondary-custom">未启用</span>
               </h5>
               <form id="geminiForm">
                 <div class="mb-4">
-                  <label for="geminiUpstreamUrl" class="form-label">API端点URL</label>
+                  <label for="geminiUpstreamUrl" class="form-label">API 端点 URL</label>
                   <div class="position-relative">
                     <i class="bi bi-link-45deg url-icon"></i>
-                    <input type="url" class="form-control has-url-icon" id="geminiUpstreamUrl" placeholder="https://generativelanguage.googleapis.com">
+                    <input type="url" class="form-control has-url-icon" id="geminiUpstreamUrl" placeholder="例如: https://generativelanguage.googleapis.com">
                   </div>
-                  <div class="form-text">Gemini API端点URL</div>
+                  <div class="form-text">请输入 Gemini 格式 API 的基础 URL。</div>
                 </div>
                 <div class="mb-4">
-                  <label for="geminiApiKey" class="form-label">API密钥</label>
+                  <label for="geminiApiKey" class="form-label">API 密钥</label>
                   <div class="api-key-wrapper">
-                    <input type="password" class="form-control" id="geminiApiKey" placeholder="AIzaSy...">
-                    <button type="button" class="api-key-toggle" data-target="geminiApiKey">
+                    <input type="password" class="form-control" id="geminiApiKey" placeholder="AIzaSy..." autocomplete="off">
+                    <button type="button" class="api-key-toggle" data-target="geminiApiKey" tabindex="-1">
                       <i class="bi bi-eye"></i>
                     </button>
                   </div>
-                  <div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>
+                  <div class="form-text">支持设置多个 API 密钥，请使用英文逗号 (,) 分隔，系统将进行负载均衡。</div>
                 </div>
-                <div class="mb-4">
-                  <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="geminiUseNativeFetch">
-                    <label class="form-check-label" for="geminiUseNativeFetch">使用原生Fetch（强烈建议开启）</label>
+                 <div class="mb-4 form-check form-switch ps-0"> <!-- 调整Switch对齐 -->
+                  <div class="d-flex align-items-center">
+                    <input class="form-check-input ms-0 me-2" type="checkbox" id="geminiUseNativeFetch" style="font-size: 1.2em; margin-top: 0;">
+                    <label class="form-check-label" for="geminiUseNativeFetch">使用原生 Fetch (推荐)</label>
                   </div>
-                  <div class="form-text">启用可增强安全性，但会无法访问使用Cloudflare CDN的API（国内免代理访问必须开启）</div>
+                  <div class="form-text mt-1">强烈建议开启。启用可增强安全性并可解决国内访问问题。</div>
                 </div>
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
-                    <i class="bi bi-check-circle"></i>保存配置
+                    <i class="bi bi-check-circle"></i>保存 Gemini 配置
                   </button>
                 </div>
               </form>
             </div>
           </div>
-          
+
           <!-- 通用设置 -->
           <div class="tab-pane fade" id="general" role="tabpanel" aria-labelledby="general-tab">
-            <div class="config-card">
-              <h5 class="card-title"><i class="bi bi-shield-lock"></i>代理设置</h5>
+            <!-- 代理密钥设置 -->
+            <div class="config-card mb-4">
+              <h5 class="card-title"><i class="bi bi-shield-lock-fill"></i>代理访问控制</h5>
               <form id="proxyForm">
-                <div class="mb-4">
-                  <label for="proxyApiKey" class="form-label">代理API密钥</label>
+                <div class="mb-3"> <!-- 减少与其他部分的间距 -->
+                  <label for="proxyApiKey" class="form-label">代理 API 密钥</label>
                   <div class="api-key-wrapper">
-                    <input type="password" class="form-control" id="proxyApiKey" placeholder="">
-                    <button type="button" class="api-key-toggle" data-target="proxyApiKey">
+                    <input type="password" class="form-control" id="proxyApiKey" placeholder="留空表示无需密钥访问" autocomplete="new-password"> <!-- 添加autocomplete提示 -->
+                    <button type="button" class="api-key-toggle" data-target="proxyApiKey" tabindex="-1">
                       <i class="bi bi-eye"></i>
                     </button>
                   </div>
-                  <div class="form-text">客户端访问此代理时需要使用的API密钥，也是管理界面的登录密码</div>
+                  <div class="form-text">客户端访问此代理服务时需要提供的 API 密钥。这也是您登录管理界面的密码。如果留空，则任何知道此 Worker URL 的人都可以访问。</div>
                 </div>
-                <div class="form-footer">
+                <div class="form-footer pt-3 mt-3"> <!-- 调整边距 -->
                   <button type="submit" class="btn btn-primary btn-save">
-                    <i class="bi bi-check-circle"></i>保存配置
+                    <i class="bi bi-key-fill"></i>更新访问密钥
                   </button>
                 </div>
               </form>
             </div>
-            
+
+            <!-- 流式输出优化设置 -->
             <div class="config-card">
-              <h5 class="card-title"><i class="bi bi-speedometer2"></i>流式输出优化</h5>
+              <h5 class="card-title"><i class="bi bi-activity"></i>流式输出优化</h5>
               <form id="streamForm">
-                <div class="row">
-                  <div class="col-md-6 mb-4">
-                    <label for="minDelay" class="form-label">最小延迟(毫秒)</label>
-                    <input type="number" class="form-control" id="minDelay" min="0" max="100" step="1">
-                    <div class="form-text">字符间最小延迟时间，影响输出速度</div>
-                  </div>
-                  
-                  <div class="col-md-6 mb-4">
-                    <label for="maxDelay" class="form-label">最大延迟(毫秒)</label>
-                    <input type="number" class="form-control" id="maxDelay" min="1" max="500" step="1">
-                    <div class="form-text">字符间最大延迟时间，影响输出速度</div>
-                  </div>
+                 <div class="alert alert-info d-flex align-items-center mb-4">
+                    <i class="bi bi-lightbulb-fill flex-shrink-0 me-2" style="font-size: 1.2rem;"></i>
+                    <div>
+                        调整这些参数可以模拟更自然的打字效果，或在需要时加速输出。请根据您的需求和模型响应速度进行微调。
+                    </div>
                 </div>
-                
-                <div class="row">
-                  <div class="col-md-6 mb-4">
+                <div class="row g-3"> <!-- 使用g-3控制栅格间距 -->
+                  <div class="col-md-6">
+                    <label for="minDelay" class="form-label">最小延迟 (毫秒)</label>
+                    <input type="number" class="form-control" id="minDelay" min="0" max="100" step="1">
+                    <div class="form-text">两次字符输出之间的最小间隔时间。</div>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="maxDelay" class="form-label">最大延迟 (毫秒)</label>
+                    <input type="number" class="form-control" id="maxDelay" min="1" max="500" step="1">
+                    <div class="form-text">两次字符输出之间的最大间隔时间。</div>
+                  </div>
+                  <div class="col-md-6">
                     <label for="adaptiveDelayFactor" class="form-label">自适应延迟因子</label>
                     <input type="number" class="form-control" id="adaptiveDelayFactor" min="0" max="2" step="0.1">
-                    <div class="form-text">延迟自适应调整因子，值越大延迟变化越明显</div>
+                    <div class="form-text">影响延迟如何根据模型响应速度自适应调整。0 表示不调整。</div>
                   </div>
-                  
-                  <div class="col-md-6 mb-4">
+                  <div class="col-md-6">
                     <label for="chunkBufferSize" class="form-label">块缓冲区大小</label>
                     <input type="number" class="form-control" id="chunkBufferSize" min="1" max="50" step="1">
-                    <div class="form-text">计算平均响应大小的缓冲区大小</div>
+                    <div class="form-text">用于计算平均响应速度的块数量。</div>
                   </div>
-                </div>
-                
-                <div class="row">
-                  <div class="col-md-6 mb-4">
-                    <label for="minContentLengthForFastOutput" class="form-label">快速输出阈值(字符)</label>
+                   <div class="col-md-6">
+                    <label for="minContentLengthForFastOutput" class="form-label">快速输出阈值 (字符)</label>
                     <input type="number" class="form-control" id="minContentLengthForFastOutput" min="100" max="10000" step="100">
-                    <div class="form-text">内容长度超过此值时启用快速输出</div>
+                    <div class="form-text">当预期内容长度超过此值时，可能启用更快的输出模式。</div>
                   </div>
-                
-                  <div class="col-md-6 mb-4">
-                    <label for="fastOutputDelay" class="form-label">快速输出延迟(毫秒)</label>
+                  <div class="col-md-6">
+                    <label for="fastOutputDelay" class="form-label">快速输出延迟 (毫秒)</label>
                     <input type="number" class="form-control" id="fastOutputDelay" min="0" max="20" step="1">
-                    <div class="form-text">快速输出时的固定延迟，值越小输出越快</div>
+                    <div class="form-text">在快速输出模式下的固定间隔时间。</div>
                   </div>
-                </div>
-
-                <div class="row">
-                  <div class="col-md-6 mb-4">
-                    <label for="finalLowDelay" class="form-label">结束阶段延迟(毫秒)</label>
+                  <div class="col-md-6">
+                    <label for="finalLowDelay" class="form-label">结束阶段延迟 (毫秒)</label>
                     <input type="number" class="form-control" id="finalLowDelay" min="0" max="20" step="1">
-                    <div class="form-text">模型完成响应后的低延迟，值越小结束越快</div>
+                    <div class="form-text">模型响应接近结束时的输出间隔，以尽快完成。</div>
                   </div>
-                
-                  <div class="col-md-6 mb-4">
-                    <label for="disableOptimizationModels" class="form-label">禁用流式优化的模型</label>
-                    <input type="text" class="form-control" id="disableOptimizationModels" placeholder="gpt-4o,claude-3-opus">
-                    <div class="form-text">指定不需要流式优化处理的模型，多个模型用英文逗号分隔。</div>
+                   <div class="col-md-6">
+                    <label for="disableOptimizationModels" class="form-label">禁用优化的模型</label>
+                    <input type="text" class="form-control" id="disableOptimizationModels" placeholder="例如: gpt-4o, claude-3-opus">
+                    <div class="form-text">指定模型名称（英文逗号分隔），这些模型将不应用流式优化，直接透传。</div>
                   </div>
                 </div>
-                
                 <div class="form-footer">
                   <button type="submit" class="btn btn-primary btn-save">
-                    <i class="bi bi-check-circle"></i>保存配置
+                    <i class="bi bi-check-circle"></i>保存优化设置
                   </button>
                 </div>
               </form>
             </div>
           </div>
-        </div>
-      </div>
-      
-      <!-- 添加页脚 -->
+        </div> <!-- end tab-content -->
+      </div> <!-- end container -->
+
+      <!-- 页脚 -->
       <footer class="dashboard-footer">
         <div class="container">
-          <p>LLM Stream Optimizer &copy; <a href="https://github.com/GeorgeXie2333/LLM-Stream-Optimizer">George</a></p>
+          <p>LLM Stream Optimizer &copy; 2025 by <a href="https://github.com/GeorgeXie2333/LLM-Stream-Optimizer" target="_blank" rel="noopener noreferrer">GeorgeXie2333</a></p>
         </div>
       </footer>
-      
+
       <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
       <script>
+        // 全局变量存储端点数据，避免重复查询DOM
+        let currentOpenAIEndpoints = [];
+
+        // 显示提示消息 (优化)
+        function showAlert(type, message, duration = 5000) {
+          const alertElement = document.getElementById('statusAlert');
+          const messageElement = document.getElementById('alertMessage');
+
+          // Map type to Bootstrap alert class
+          const alertClassMap = {
+            success: 'alert-success',
+            danger: 'alert-danger',
+            warning: 'alert-warning',
+            info: 'alert-info'
+          };
+          const alertClass = alertClassMap[type] || 'alert-secondary'; // Default to secondary if type is unknown
+
+          alertElement.className = \`alert \${alertClass} alert-dismissible fade show mb-4\`; // Use template literal
+          messageElement.innerHTML = message; // Use innerHTML to allow potential basic formatting like icons
+          alertElement.style.display = 'block';
+          alertElement.style.opacity = 1; // Ensure opacity is set for fade out
+
+          // Clear existing timer if any
+          if (alertElement.timerId) {
+            clearTimeout(alertElement.timerId);
+          }
+
+          // Auto-hide after duration
+          if (duration > 0) {
+             alertElement.timerId = setTimeout(() => {
+                // Fade out effect
+                alertElement.style.opacity = 0;
+                // Wait for fade out transition before hiding
+                setTimeout(() => {
+                   if (alertElement.style.opacity === '0') { // Check if it wasn't shown again
+                     alertElement.style.display = 'none';
+                   }
+                }, 300); // Match transition duration if needed
+            }, duration);
+          }
+        }
+
+        // 更新状态徽章 (优化)
+        function updateStatusBadge(elementId, isEnabled) {
+            const badge = document.getElementById(elementId);
+            if (badge) {
+                badge.textContent = isEnabled ? '已启用' : '未启用';
+                badge.classList.toggle('bg-success-custom', isEnabled);
+                badge.classList.toggle('bg-secondary-custom', !isEnabled);
+                badge.style.opacity = 0; // Reset opacity for animation
+                requestAnimationFrame(() => { // Force reflow for animation
+                  badge.style.opacity = 1;
+                });
+            }
+        }
+
+        // 密钥显示/隐藏切换功能 (优化)
+        function setupApiKeyToggle() {
+            document.querySelectorAll('.api-key-toggle').forEach(button => {
+                // Remove existing listener to prevent duplicates if called multiple times
+                button.removeEventListener('click', toggleApiKeyVisibility);
+                // Add listener
+                button.addEventListener('click', toggleApiKeyVisibility);
+            });
+        }
+        function toggleApiKeyVisibility() {
+            const targetId = this.getAttribute('data-target');
+            // Find input relative to the button's parent container for better scoping in dynamic forms
+            const inputField = this.closest('.api-key-wrapper').querySelector(\`input[id="\${targetId}"]\`) || document.getElementById(targetId);
+            const icon = this.querySelector('i');
+            if (inputField && icon) {
+                if (inputField.type === 'password') {
+                inputField.type = 'text';
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+                } else {
+                inputField.type = 'password';
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+                }
+            }
+        }
+
         // 加载配置
         async function loadConfig() {
           try {
             const response = await fetch('/admin/api/config');
-            
             if (!response.ok) {
               if (response.status === 401) {
-                // 未授权，跳转到登录页面
-                window.location.href = '/admin';
+                window.location.href = '/admin'; // 未授权，跳转登录
                 return;
               }
-              throw new Error('获取配置失败: ' + response.status);
+              throw new Error(\`获取配置失败: \${response.status} \${response.statusText}\`);
             }
-            
             const data = await response.json();
-            
-            if (data.success) {
-              // 填充表单
+            if (data.success && data.config) {
               const config = data.config;
-              
+
               // OpenAI配置
-              // 已移除设置默认端点的代码行
-              
-              // 加载多端点配置
-              var openaiEndpoints = config.openaiEndpoints || [];
-              loadOpenAIEndpoints(openaiEndpoints);
-              
-              // 更新OpenAI状态徽章
-              var openaiStatus = document.getElementById('openaiStatus');
-              if (config.openaiEndpoints && config.openaiEndpoints.length > 0) {
-                openaiStatus.textContent = '已启用';
-                openaiStatus.classList.remove('bg-secondary');
-                openaiStatus.classList.add('bg-success');
-              } else {
-                openaiStatus.textContent = '未启用';
-                openaiStatus.classList.remove('bg-success');
-                openaiStatus.classList.add('bg-secondary');
-              }
-              
+              currentOpenAIEndpoints = config.openaiEndpoints || [];
+              loadOpenAIEndpointsUI(currentOpenAIEndpoints);
+              updateStatusBadge('openaiStatus', currentOpenAIEndpoints.length > 0);
+
               // Anthropic配置
               document.getElementById('anthropicUpstreamUrl').value = config.anthropicUpstreamUrl || '';
               document.getElementById('anthropicApiKey').value = config.anthropicApiKey || '';
-              
-              // 设置原生Fetch选项
               document.getElementById('anthropicUseNativeFetch').checked = config.anthropicUseNativeFetch === true;
-              
-              // 更新状态标签
-              const anthropicStatus = document.getElementById('anthropicStatus');
-              if (config.anthropicEnabled) {
-                anthropicStatus.textContent = '已启用';
-                anthropicStatus.classList.remove('bg-secondary');
-                anthropicStatus.classList.add('bg-success');
-              } else {
-                anthropicStatus.textContent = '未启用';
-                anthropicStatus.classList.remove('bg-success');
-                anthropicStatus.classList.add('bg-secondary');
-              }
-              
+              updateStatusBadge('anthropicStatus', config.anthropicEnabled);
+
               // Gemini配置
               document.getElementById('geminiUpstreamUrl').value = config.geminiUpstreamUrl || '';
               document.getElementById('geminiApiKey').value = config.geminiApiKey || '';
-              
-              // 设置原生Fetch选项
               document.getElementById('geminiUseNativeFetch').checked = config.geminiUseNativeFetch === true;
-              
-              // 更新Gemini状态徽章
-              const geminiStatus = document.getElementById('geminiStatus');
-              if (config.geminiEnabled) {
-                geminiStatus.textContent = '已启用';
-                geminiStatus.classList.remove('bg-secondary');
-                geminiStatus.classList.add('bg-success');
-              } else {
-                geminiStatus.textContent = '未启用';
-                geminiStatus.classList.remove('bg-success');
-                geminiStatus.classList.add('bg-secondary');
-              }
-              
+              updateStatusBadge('geminiStatus', config.geminiEnabled);
+
               // 代理设置
               document.getElementById('proxyApiKey').value = config.proxyApiKey || '';
-              
-              // 流式输出设置
-              document.getElementById('minDelay').value = config.minDelay || 5;
-              document.getElementById('maxDelay').value = config.maxDelay || 40;
-              document.getElementById('adaptiveDelayFactor').value = config.adaptiveDelayFactor || 0.8;
-              document.getElementById('chunkBufferSize').value = config.chunkBufferSize || 8;
-              
-              // 新增的流式优化参数
-              document.getElementById('minContentLengthForFastOutput').value = config.minContentLengthForFastOutput || 10000;
-              document.getElementById('fastOutputDelay').value = config.fastOutputDelay || 1;
-              document.getElementById('finalLowDelay').value = config.finalLowDelay || 1;
-              
-              // 设置禁用流式优化的模型列表
-              if (config.disableOptimizationModels && Array.isArray(config.disableOptimizationModels)) {
-                document.getElementById('disableOptimizationModels').value = config.disableOptimizationModels.join(',');
-              } else {
-                document.getElementById('disableOptimizationModels').value = '';
-              }
+
+              // 流式输出设置 (Provide defaults if missing)
+              document.getElementById('minDelay').value = config.minDelay ?? 5;
+              document.getElementById('maxDelay').value = config.maxDelay ?? 40;
+              document.getElementById('adaptiveDelayFactor').value = config.adaptiveDelayFactor ?? 0.8;
+              document.getElementById('chunkBufferSize').value = config.chunkBufferSize ?? 8;
+              document.getElementById('minContentLengthForFastOutput').value = config.minContentLengthForFastOutput ?? 1000; // Default value corrected
+              document.getElementById('fastOutputDelay').value = config.fastOutputDelay ?? 1;
+              document.getElementById('finalLowDelay').value = config.finalLowDelay ?? 1;
+              document.getElementById('disableOptimizationModels').value = (config.disableOptimizationModels || []).join(',');
+
+              // Setup toggles after loading potential new fields
+              setupApiKeyToggle();
+
             } else {
-              showAlert('danger', data.message || '加载配置失败');
+              showAlert('danger', data.message || '加载配置数据格式错误');
             }
           } catch (error) {
-            showAlert('danger', '加载配置请求失败: ' + error.message);
+            showAlert('danger', \`加载配置请求失败: \${error.message}\`);
+            if (error.message.includes('401')) { // Redirect on 401 errors during load
+                 setTimeout(() => window.location.href = '/admin', 3000);
+            }
           }
         }
-        
-        // 显示提示消息
-        function showAlert(type, message) {
-          const alertElement = document.getElementById('statusAlert');
-          const messageElement = document.getElementById('alertMessage');
-          
-          alertElement.className = 'alert alert-' + type + ' alert-dismissible fade show mb-4';
-          messageElement.textContent = message;
-          alertElement.style.display = 'block';
-          
-          // 自动关闭
-          setTimeout(() => {
-            alertElement.style.display = 'none';
-          }, 5000);
-        }
-        
-        // 保存配置
-        async function saveConfig(formData) {
+
+        // 保存配置 (通用函数)
+        async function saveConfig(formData, buttonElement) {
+          const originalButtonText = buttonElement.innerHTML;
+          buttonElement.innerHTML = \`<i class="bi bi-hourglass-split me-2"></i> 保存中...\`;
+          buttonElement.disabled = true;
+
           try {
             const response = await fetch('/admin/api/config', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(formData)
             });
-            
             const data = await response.json();
-            
             if (data.success) {
-              showAlert('success', data.message || '配置保存成功');
-              // 重新加载配置
-              loadConfig();
+              showAlert('success', data.message || '配置保存成功！');
+              // 重新加载配置以更新状态等
+              await loadConfig();
             } else {
               showAlert('danger', data.message || '配置保存失败');
             }
           } catch (error) {
-            showAlert('danger', '保存配置请求失败: ' + error.message);
+            showAlert('danger', \`保存配置请求失败: \${error.message}\`);
+          } finally {
+             // Add a small delay before restoring button to give feedback time
+             setTimeout(() => {
+                buttonElement.innerHTML = originalButtonText;
+                buttonElement.disabled = false;
+             }, 500);
           }
         }
-        
+
         // 表单提交处理
         document.getElementById('openaiForm').addEventListener('submit', function(e) {
           e.preventDefault();
-          var formData = {
-            // 移除默认端点设置
-            defaultUpstreamUrl: '', // 设置为空字符串以移除默认端点URL
-            defaultOutgoingApiKey: '', // 设置为空字符串以禁用默认API密钥
-            openaiEndpoints: getOpenAIEndpointsConfig()
+          const formData = {
+            openaiEndpoints: getOpenAIEndpointsConfigFromUI()
           };
-          saveConfig(formData);
+          saveConfig(formData, this.querySelector('.btn-save'));
         });
-        
+
         document.getElementById('anthropicForm').addEventListener('submit', function(e) {
           e.preventDefault();
           const formData = {
-            anthropicUpstreamUrl: document.getElementById('anthropicUpstreamUrl').value,
-            anthropicApiKey: document.getElementById('anthropicApiKey').value,
+            anthropicUpstreamUrl: document.getElementById('anthropicUpstreamUrl').value.trim(),
+            anthropicApiKey: document.getElementById('anthropicApiKey').value.trim(),
             anthropicUseNativeFetch: document.getElementById('anthropicUseNativeFetch').checked
           };
-          saveConfig(formData);
+          saveConfig(formData, this.querySelector('.btn-save'));
         });
-        
+
         document.getElementById('geminiForm').addEventListener('submit', function(e) {
           e.preventDefault();
           const formData = {
-            geminiUpstreamUrl: document.getElementById('geminiUpstreamUrl').value,
-            geminiApiKey: document.getElementById('geminiApiKey').value,
+            geminiUpstreamUrl: document.getElementById('geminiUpstreamUrl').value.trim(),
+            geminiApiKey: document.getElementById('geminiApiKey').value.trim(),
             geminiUseNativeFetch: document.getElementById('geminiUseNativeFetch').checked
           };
-          saveConfig(formData);
+          saveConfig(formData, this.querySelector('.btn-save'));
         });
-        
+
         document.getElementById('proxyForm').addEventListener('submit', function(e) {
           e.preventDefault();
           const formData = {
-            proxyApiKey: document.getElementById('proxyApiKey').value
+            proxyApiKey: document.getElementById('proxyApiKey').value.trim() // Trim whitespace
           };
-          saveConfig(formData);
+          saveConfig(formData, this.querySelector('.btn-save'));
         });
-        
+
         document.getElementById('streamForm').addEventListener('submit', function(e) {
           e.preventDefault();
           const formData = {
-            minDelay: document.getElementById('minDelay').value,
-            maxDelay: document.getElementById('maxDelay').value,
-            adaptiveDelayFactor: document.getElementById('adaptiveDelayFactor').value,
-            chunkBufferSize: document.getElementById('chunkBufferSize').value,
-            
-            // 新增的流式优化参数
-            minContentLengthForFastOutput: document.getElementById('minContentLengthForFastOutput').value,
-            fastOutputDelay: document.getElementById('fastOutputDelay').value,
-            finalLowDelay: document.getElementById('finalLowDelay').value,
-            
-            disableOptimizationModels: document.getElementById('disableOptimizationModels').value.split(',')
+            minDelay: parseInt(document.getElementById('minDelay').value) || 0,
+            maxDelay: parseInt(document.getElementById('maxDelay').value) || 1,
+            adaptiveDelayFactor: parseFloat(document.getElementById('adaptiveDelayFactor').value) || 0,
+            chunkBufferSize: parseInt(document.getElementById('chunkBufferSize').value) || 1,
+            minContentLengthForFastOutput: parseInt(document.getElementById('minContentLengthForFastOutput').value) || 100,
+            fastOutputDelay: parseInt(document.getElementById('fastOutputDelay').value) || 0,
+            finalLowDelay: parseInt(document.getElementById('finalLowDelay').value) || 0,
+            disableOptimizationModels: document.getElementById('disableOptimizationModels').value
+              .split(',')
               .map(model => model.trim())
               .filter(model => model) // 过滤空字符串
           };
-          saveConfig(formData);
+          // Basic validation for min/max delay
+          if (formData.minDelay > formData.maxDelay) {
+              showAlert('warning', '最小延迟不能大于最大延迟。');
+              return; // Prevent saving
+          }
+          saveConfig(formData, this.querySelector('.btn-save'));
         });
-        
-        // 密钥显示/隐藏切换功能
-        document.querySelectorAll('.api-key-toggle').forEach(button => {
-          button.addEventListener('click', function() {
-            const targetId = this.getAttribute('data-target');
-            const inputField = document.getElementById(targetId);
-            const icon = this.querySelector('i');
-            
-            if (inputField.type === 'password') {
-              inputField.type = 'text';
-              icon.classList.remove('bi-eye');
-              icon.classList.add('bi-eye-slash');
-            } else {
-              inputField.type = 'password';
-              icon.classList.remove('bi-eye-slash');
-              icon.classList.add('bi-eye');
-            }
-          });
-        });
-        
-        // 退出登录
+
+         // 退出登录
         document.getElementById('logoutBtn').addEventListener('click', async function() {
+          this.disabled = true; // Disable button immediately
+          this.innerHTML = '<i class="bi bi-hourglass-split"></i> 退出中...';
+
           try {
-            // 客户端尝试清除所有可能的cookie存储
-            document.cookie = 'admin_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-            document.cookie = 'admin_session=; Path=/admin; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-            document.cookie = 'admin_session=; Path=/admin/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-            
-            // 清除所有本地存储
-            localStorage.clear();
-            sessionStorage.clear();
-            
-            // 调用退出登录API
+            // Server-side logout
             const response = await fetch('/admin/api/logout', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' }
             });
-            
+
+            // Client-side cleanup (best effort)
+            document.cookie = 'admin_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Max-Age=0; SameSite=Lax';
+            document.cookie = 'admin_session=; Path=/admin; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Max-Age=0; SameSite=Lax';
+             // Consider clearing storage if needed, but usually cookie removal is enough
+             // localStorage.clear();
+             // sessionStorage.clear();
+
             if (response.ok) {
-              // 跳转到登录页面
-              window.location.href = '/admin';
+              // Redirect after a short delay to show feedback
+              setTimeout(() => window.location.href = '/admin', 500);
             } else {
-              console.error('退出登录失败', await response.text());
-              alert('退出登录失败，请刷新页面重试');
+              showAlert('danger', \`退出登录失败: \${response.statusText}\`);
+              this.disabled = false; // Re-enable button on failure
+              this.innerHTML = '<i class="bi bi-box-arrow-right"></i> 退出登录';
             }
           } catch (error) {
-            console.error('退出登录出错', error);
-            alert('退出出错，请刷新页面重试');
+            showAlert('danger', \`退出登录请求出错: \${error.message}\`);
+            this.disabled = false; // Re-enable button on error
+            this.innerHTML = '<i class="bi bi-box-arrow-right"></i> 退出登录';
           }
         });
-        
-        // 页面加载时获取配置
-        window.addEventListener('load', loadConfig);
-        
-        // 获取OpenAI多端点配置
-        function getOpenAIEndpointsConfig() {
-          var endpoints = [];
-          var endpointElements = document.querySelectorAll('.openai-endpoint');
-          
-          for (var i = 0; i < endpointElements.length; i++) {
-            var element = endpointElements[i];
-            var id = element.dataset.id;
-            var nameInput = element.querySelector('.endpoint-name-' + id);
-            var urlInput = element.querySelector('.endpoint-url-' + id);
-            var apiKeyInput = element.querySelector('.endpoint-apikey-' + id);
-            var modelsInput = element.querySelector('.endpoint-models-' + id);
-            var nativeFetchInput = element.querySelector('.endpoint-native-fetch-' + id);
-            
-            if (!nameInput || !urlInput || !apiKeyInput || !modelsInput) continue;
-            
-            var name = nameInput.value;
-            var url = urlInput.value;
-            var apiKey = apiKeyInput.value;
-            var modelsText = modelsInput.value;
-            var useNativeFetch = nativeFetchInput ? nativeFetchInput.checked : false;
-            
-            // 解析模型列表
-            var modelsList = modelsText.split(',');
-            var models = [];
-            
-            for (var j = 0; j < modelsList.length; j++) {
-              var model = modelsList[j].trim();
-              if (model.length > 0) {
-                models.push(model);
-              }
-            }
-            
-            if (url && apiKey) {
-              endpoints.push({
-                id: id, // 保存端点ID
-                name: name,
-                url: url,
-                apiKey: apiKey,
-                models: models,
-                useNativeFetch: useNativeFetch
-              });
-            }
-          }
-          
-          return endpoints;
-        }
-        
-        // 加载OpenAI多端点配置
-        function loadOpenAIEndpoints(endpoints) {
-          var container = document.getElementById('openaiEndpointsContainer');
-          container.innerHTML = '';
-          
-          if (!endpoints || endpoints.length === 0) {
-            // 如果没有端点，添加一个空的端点表单
-            addOpenAIEndpointForm();
-          } else {
-            // 加载现有端点
-            for (var i = 0; i < endpoints.length; i++) {
-              addOpenAIEndpointForm(endpoints[i]);
-            }
-          }
-        }
-        
-        // 添加UUID生成函数，用于替代Date.now()
+
+        // --- OpenAI 多端点 UI ---
+
         function generateUUID() {
-          // 简化版UUID实现
-          return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-          });
+          return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+            (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+          );
         }
-        
-        // 添加OpenAI端点表单
-        function addOpenAIEndpointForm(endpoint) {
-          // 默认值处理
-          endpoint = endpoint || null;
-          
-          var container = document.getElementById('openaiEndpointsContainer');
-          var id = endpoint && endpoint.id ? endpoint.id : generateUUID(); // 使用UUID作为唯一ID
-          
-          // 使用字符串拼接而不是模板字符串，避免语法解析问题
-          var endpointHtml = 
-            '<div class="openai-endpoint card mb-3" data-id="' + id + '">' +
-              '<div class="card-body">' +
-                '<div class="d-flex justify-content-between align-items-center mb-3">' +
-                  '<h6 class="card-subtitle">端点配置</h6>' +
-                  '<button type="button" class="btn btn-sm btn-outline-danger remove-endpoint" data-id="' + id + '">' +
-                    '<i class="bi bi-trash"></i> 删除' +
-                  '</button>' +
-                '</div>' +
-                '<div class="row g-3">' +
-                  '<div class="col-md-6">' +
-                    '<label class="form-label">端点名称</label>' +
-                    '<input type="text" class="form-control endpoint-name-' + id + '" placeholder="例如: OpenAI官方" value="' + (endpoint ? (endpoint.name || '') : '') + '">' +
-                  '</div>' +
-                  '<div class="col-md-6">' +
-                    '<label class="form-label">API端点URL</label>' +
-                    '<input type="url" class="form-control endpoint-url-' + id + '" placeholder="https://api.openai.com/v1" value="' + (endpoint ? (endpoint.url || '') : '') + '">' +
-                    '<div class="form-text">请填写API端点基础路径（包含如/v1或其他路径）</div>' +
-                  '</div>' +
-                  '<div class="col-md-6">' +
-                    '<label class="form-label">API密钥</label>' +
-                    '<div class="api-key-wrapper">' +
-                      '<input type="password" class="form-control endpoint-apikey-' + id + '" placeholder="sk-..." value="' + (endpoint ? (endpoint.apiKey || '') : '') + '">' +
-                      '<button type="button" class="api-key-toggle" data-target="endpoint-apikey-' + id + '">' +
-                        '<i class="bi bi-eye"></i>' +
-                      '</button>' +
-                    '</div>' +
-                    '<div class="form-text">可以设置多个API密钥，使用英文逗号分隔，系统会自动负载均衡</div>' +
-                  '</div>' +
-                  '<div class="col-md-6">' +
-                    '<label class="form-label">支持的模型（多端点必须设置）</label>' +
-                    '<input type="text" class="form-control endpoint-models-' + id + '" placeholder="gpt-4,gpt-3.5-turbo (单端点使用时，留空表示支持所有模型)" value="' + (endpoint && endpoint.models ? endpoint.models.join(',') : '') + '">' +
-                    '<div class="form-text">多个模型用英文逗号分隔，留空表示支持所有模型</div>' +
-                  '</div>' +
-                  '<div class="col-md-6">' +
-                    '<div class="form-check form-switch mt-4">' +
-                      '<input class="form-check-input endpoint-native-fetch-' + id + '" type="checkbox" id="useNativeFetch-' + id + '"' + (endpoint && endpoint.useNativeFetch ? ' checked' : '') + '>' +
-                      '<label class="form-check-label" for="useNativeFetch-' + id + '">使用原生Fetch</label>' +
-                      '<div class="form-text">启用可增强安全性，但会无法访问使用Cloudflare CDN的API</div>' +
-                    '</div>' +
-                  '</div>' +
-                '</div>' +
-              '</div>' +
-            '</div>';
-          
-          // 添加到容器
-          container.insertAdjacentHTML('beforeend', endpointHtml);
-          
-          // 添加删除事件监听器
-          var removeButtonSelector = '.remove-endpoint[data-id="' + id + '"]';
-          var removeButton = container.querySelector(removeButtonSelector);
-          removeButton.addEventListener('click', function() {
-            var endpointSelector = '.openai-endpoint[data-id="' + id + '"]';
-            var endpoint = document.querySelector(endpointSelector);
-            endpoint.remove();
-          });
-          
-          // 添加API密钥切换可见性事件
-          var toggleButtonSelector = '.api-key-toggle[data-target="endpoint-apikey-' + id + '"]';
-          var toggleButton = container.querySelector(toggleButtonSelector);
-          toggleButton.addEventListener('click', function() {
-            var inputSelector = '.endpoint-apikey-' + id;
-            var input = document.querySelector(inputSelector);
-            var icon = this.querySelector('i');
-            if (input.type === 'password') {
-              input.type = 'text';
-              icon.classList.remove('bi-eye');
-              icon.classList.add('bi-eye-slash');
+
+        // 从UI读取OpenAI端点配置
+        function getOpenAIEndpointsConfigFromUI() {
+            const endpoints = [];
+            const container = document.getElementById('openaiEndpointsContainer');
+            container.querySelectorAll('.openai-endpoint').forEach(element => {
+                const id = element.dataset.id;
+                const nameInput = element.querySelector(\`.endpoint-name-\${id}\`);
+                const urlInput = element.querySelector(\`.endpoint-url-\${id}\`);
+                const apiKeyInput = element.querySelector(\`.endpoint-apikey-\${id}\`);
+                const modelsInput = element.querySelector(\`.endpoint-models-\${id}\`);
+                const nativeFetchInput = element.querySelector(\`.endpoint-native-fetch-\${id}\`);
+
+                const url = urlInput?.value.trim();
+                // 基本校验：URL和API Key不能为空
+                if (url) {
+                    endpoints.push({
+                        id: id, // 保留ID用于可能的更新操作
+                        name: nameInput?.value.trim() || '',
+                        url: url,
+                        apiKey: apiKeyInput?.value.trim() || '', // 允许暂时为空，但保存时应提示
+                        models: modelsInput?.value.split(',').map(m => m.trim()).filter(m => m) || [],
+                        useNativeFetch: nativeFetchInput?.checked || false
+                    });
+                } else if (apiKeyInput?.value.trim() || nameInput?.value.trim() || modelsInput?.value.trim()) {
+                   // 如果URL为空但其他字段有值，可能需要提示用户
+                   showAlert('warning', \`端点 "\${nameInput?.value.trim() || '未命名'}" 的URL不能为空，该端点未保存。\`, 7000);
+                }
+            });
+            return endpoints;
+        }
+
+
+        // 加载OpenAI多端点UI
+        function loadOpenAIEndpointsUI(endpoints) {
+            const container = document.getElementById('openaiEndpointsContainer');
+            container.innerHTML = ''; // 清空现有UI
+            if (!endpoints || endpoints.length === 0) {
+                // 可以选择添加一个空表单，或显示提示信息
+                container.innerHTML = '<p class="text-muted text-center my-3">尚未配置 OpenAI 端点。点击上方 "添加端点" 开始配置。</p>';
             } else {
-              input.type = 'password';
-              icon.classList.remove('bi-eye-slash');
-              icon.classList.add('bi-eye');
+                endpoints.forEach(endpoint => addOpenAIEndpointFormUI(endpoint, false)); // 初始加载时不触发保存
             }
-          });
+             // 确保所有 API Key 切换按钮都已初始化
+            setupApiKeyToggle();
         }
-        
-        // 添加端点按钮事件
+
+        // 添加单个OpenAI端点表单到UI
+        function addOpenAIEndpointFormUI(endpointData = null, isNew = true) {
+          const container = document.getElementById('openaiEndpointsContainer');
+          // 移除初始的提示信息（如果存在）
+          const placeholder = container.querySelector('p.text-muted');
+          if(placeholder) placeholder.remove();
+
+          const id = endpointData?.id || generateUUID();
+          const endpoint = endpointData || { id: id, name: '', url: '', apiKey: '', models: [], useNativeFetch: false }; // 默认空数据
+
+          const div = document.createElement('div');
+          div.className = 'openai-endpoint card mb-3';
+          div.dataset.id = id;
+          // 使用模板字符串构建HTML，更易读
+          div.innerHTML = \`
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="card-subtitle text-muted">端点 ID: \${id.substring(0,8)}...</h6>
+                <button type="button" class="btn btn-sm btn-outline-danger remove-endpoint" data-id="\${id}" title="删除此端点">
+                  <i class="bi bi-trash"></i> 删除
+                </button>
+              </div>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">端点名称 (可选)</label>
+                  <input type="text" class="form-control endpoint-name-\${id}" placeholder="例: OpenAI 官方" value="\${endpoint.name || ''}">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">API 端点 URL <span class="text-danger">*</span></label>
+                  <input type="url" class="form-control endpoint-url-\${id}" placeholder="https://api.openai.com/v1" value="\${endpoint.url || ''}" required>
+                  <div class="form-text">必须填写基础路径 (例如 /v1)。</div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">API 密钥 <span class="text-danger">*</span></label>
+                  <div class="api-key-wrapper">
+                    <input type="password" class="form-control endpoint-apikey-\${id}" id="endpoint-apikey-\${id}" placeholder="sk-..." value="\${endpoint.apiKey || ''}" autocomplete="off" required>
+                    <button type="button" class="api-key-toggle" data-target="endpoint-apikey-\${id}" tabindex="-1">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                  </div>
+                  <div class="form-text">支持设置多个 API 密钥，请使用英文逗号 (,) 分隔，系统将进行负载均衡。</div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">支持的模型 (可选)</label>
+                  <input type="text" class="form-control endpoint-models-\${id}" placeholder="gpt-4, gpt-3.5-turbo" value="\${(endpoint.models || []).join(', ')}">
+                  <div class="form-text">英文逗号分隔，留空表示支持所有模型。若使用多个API端点则必须设置。</div>
+                </div>
+                <div class="col-md-6">
+                  <div class="form-check form-switch mt-md-4 pt-md-2"> <!-- 微调对齐 -->
+                    <input class="form-check-input endpoint-native-fetch-\${id}" type="checkbox" id="useNativeFetch-\${id}" \${endpoint.useNativeFetch ? 'checked' : ''}>
+                    <label class="form-check-label" for="useNativeFetch-\${id}">使用原生 Fetch</label>
+                    <div class="form-text">启用此选项可增强安全性，但可能无法访问部署在 Cloudflare CDN 后的 API 端点。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          \`;
+
+          container.appendChild(div);
+
+          // 添加删除事件监听器
+          div.querySelector('.remove-endpoint').addEventListener('click', function() {
+              div.remove(); // 直接移除DOM元素
+               // 如果移除后容器为空，可以再次显示提示信息
+                if (container.children.length === 0) {
+                   container.innerHTML = '<p class="text-muted text-center my-3">尚未配置 OpenAI 端点。点击上方 "添加端点" 开始配置。</p>';
+                }
+              // 注意：删除后需要用户手动点击保存按钮才能生效
+              showAlert('info', '端点已从界面移除，请点击保存按钮以确认更改。', 5000);
+          });
+
+          // 为新添加的元素设置API Key切换
+          setupApiKeyToggle();
+
+           // 如果是新添加的，滚动到视图并高亮显示
+            if (isNew) {
+                div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                // 添加短暂高亮效果
+                div.style.transition = 'background-color 0.5s ease-out';
+                div.style.backgroundColor = 'rgba(67, 97, 238, 0.1)';
+                setTimeout(() => {
+                    div.style.backgroundColor = ''; // 恢复背景色
+                }, 1500);
+            }
+        }
+
+        // “添加端点”按钮事件
         document.getElementById('addOpenAIEndpoint').addEventListener('click', function() {
-          addOpenAIEndpointForm();
+          addOpenAIEndpointFormUI(null, true); // 添加一个空的新表单
         });
+
+        // 页面加载时执行初始化
+        window.addEventListener('load', async () => {
+            await loadConfig(); // 加载配置
+            setupApiKeyToggle(); // 初始化所有API Key切换按钮
+            // 可以添加其他初始化逻辑
+        });
+
       </script>
     </body>
   </html>
   `;
-  
   return new Response(html, {
-    headers: { 
+    headers: {
       'Content-Type': 'text/html;charset=UTF-8',
+      // 仪表盘页面通常需要验证，所以不缓存或限制缓存
       'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
       'Pragma': 'no-cache',
       'Expires': '0'
