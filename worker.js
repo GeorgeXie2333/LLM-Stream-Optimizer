@@ -5151,17 +5151,17 @@ async function createGeminiRequest(request, requestBody, config) {
   const geminiBody = {
     contents: contents,
     generationConfig: {
-      temperature: requestBody.temperature || 0.7,
-      maxOutputTokens: requestBody.max_tokens || 2048,
+      temperature: requestBody.temperature || 1,
+      maxOutputTokens: requestBody.max_tokens || 8192,
       topP: requestBody.top_p || 0.95,
       topK: requestBody.top_k || 40
     },
-    // 安全设置调整为BLOCK_NONE，防止截断回复
+    // 更新安全设置，防止截断回复
     safetySettings: [
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" },
       { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }
     ]
   };
@@ -5376,7 +5376,7 @@ async function getGeminiModels(request, config) {
         owned_by: "google"
       },
       {
-        id: "gemini-2.0-pro-exp",
+        id: "gemini-2.5-pro-exp-03-25",
         object: "model",
         created: Math.floor(Date.now() / 1000),
         owned_by: "google"
@@ -5401,12 +5401,6 @@ async function getGeminiModels(request, config) {
       },
       {
         id: "gemini-1.5-flash",
-        object: "model",
-        created: Math.floor(Date.now() / 1000),
-        owned_by: "google"
-      },
-      {
-        id: "gemini-1.5-flash-8b",
         object: "model",
         created: Math.floor(Date.now() / 1000),
         owned_by: "google"
@@ -5547,18 +5541,6 @@ async function getAnthropicModels(request, config) {
       },
       {
         id: "claude-3-opus-20240229",
-        object: "model",
-        created: Math.floor(Date.now() / 1000),
-        owned_by: "anthropic"
-      },
-      {
-        id: "claude-3-sonnet-20240229",
-        object: "model",
-        created: Math.floor(Date.now() / 1000),
-        owned_by: "anthropic"
-      },
-      {
-        id: "claude-3-haiku-20240307",
         object: "model",
         created: Math.floor(Date.now() / 1000),
         owned_by: "anthropic"
